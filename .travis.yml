@@ -1,0 +1,12 @@
+language: julia
+dist: xenial
+sudo: true
+julia:
+  - 1.3
+os:
+  - linux
+services:
+  - docker
+arch:
+  - arm64
+script: ls
