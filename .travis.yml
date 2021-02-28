@@ -1,8 +1,12 @@
-language: julia
+language: 
+  - julia
+  - python
 dist: xenial
 sudo: true
 julia:
   - 1.3
+python: 
+  - 3.6
 os:
   - linux
 services:
