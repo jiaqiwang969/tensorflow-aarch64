@@ -7,7 +7,7 @@ sudo apt update -y
 sudo apt install -y ansible
 python3 -V
 pip -V
-pip install --upgrade pip
+#pip install --upgrade pip
 #git clone --depth 1 https://git.linaro.org/ci/job/configs.git
 cd configs/ldcg-python-tensorflow/tensorflow
 ansible-playbook -i inventory --verbose  playbooks/run.yml
