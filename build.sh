@@ -2,7 +2,7 @@
 
 set -xe
 sudo apt-add-repository ppa:ansible/ansible
-sudo update -y
+sudo apt update -y
 #apt upgrade -y
 sudo apt install -y ansible
 
