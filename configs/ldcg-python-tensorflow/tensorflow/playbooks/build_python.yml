@@ -69,6 +69,7 @@
         - python3-setuptools
         - python3-venv
         - python3-wheel
+	- libopenblas-dev
   when: ansible_os_family == 'Debian'
 
 - name: upgrade pip
