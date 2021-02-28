@@ -69,7 +69,6 @@
         - python3-setuptools
         - python3-venv
         - python3-wheel
-        - python3-zipp
   when: ansible_os_family == 'Debian'
 
 - name: upgrade pip
@@ -99,6 +98,7 @@
 - name: build wheels of binary Python packages
   include_tasks: build_python_wheel.yml
   loop:
+    - zipp
     - grpcio
     - "numpy==1.18.*"
     - h5py
