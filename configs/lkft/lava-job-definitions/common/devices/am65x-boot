@@ -1,8 +1,0 @@
-- boot:
-    namespace: target
-    prompts:
-    - 'root@(.*):/#'
-    - ':/'
-    timeout:
-      minutes: 15
-    method: fastboot

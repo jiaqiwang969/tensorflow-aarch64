@@ -1,4 +1,0 @@
----
-pip_extra_index_url: "https://snapshots.linaro.org/ldcg/python-cache/"
-virtualenv_dir: "/home/buildslave/virtualenv"
-wheels_dir: "/home/buildslave/wheels"

@@ -1,4 +1,0 @@
-Format-Version: 0.5
-
-Files-Pattern: *
-License-Type: open

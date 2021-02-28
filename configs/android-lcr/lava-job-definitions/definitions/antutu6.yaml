@@ -1,4 +1,0 @@
-{% extends "master/template-apk-automation.yaml.jinja2" %}
-
-{% set job_timeout = 240 %}
-{% set testname = "antutu6" %}

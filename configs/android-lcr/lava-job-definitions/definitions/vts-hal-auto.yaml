@@ -1,5 +1,0 @@
-{% extends "master/template-vts.yaml.jinja2" %}
-
-{% set job_timeout = 300 %}
-{% set testcommand = "vts-hal-auto" %}
-{% set testname = "vts-hal-auto" %}
