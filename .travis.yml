@@ -11,4 +11,4 @@ arch:
   - arm64
 script: 
   - ls
-  - ./build.sh
+  - sudo bash build.sh
