@@ -1,0 +1,132 @@
+- scm:
+    name: jmh
+    scm:
+        - hg:
+            url: https://hg.openjdk.java.net/code-tools/jmh
+            clean: true
+            browser: hgweb
+            browser-url: https://hg.openjdk.java.net/code-tools/jmh/
+            subdir: jmh
+- scm:
+    name: jmh-linaro-org
+    scm:
+        - git:
+            url: https://git.linaro.org/leg/openjdk/jmh-linaro-org
+            refspec: +refs/heads/master:refs/remotes/origin/master
+#            refspec: ${GERRIT_REFSPEC}
+            name: origin
+            branches:
+                 - refs/heads/master
+#                - ${GERRIT_BRANCH}
+            skip-tag: true
+            wipe-workspace: false
+            basedir: jmh/jmh-linaro-org
+            choosing-strategy: gerrit
+- job:
+    name: jmh-build
+    project-type: freestyle
+    defaults: global
+    description: |
+        Build jmh with jmh-linaro-org benchmarks. Builds all of jmh and runs unit
+        tests before building jmh-linaro-org.
+        benchmarks.jar is published with jmh-linaro-org benchmarks.
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+                - job-extended-read
+            openjdk-members:
+                - job-build
+                - job-cancel
+        - build-discarder:
+            num-to-keep: 10
+            artifact-num-to-keep: 1
+    parameters:
+        - string:
+            name: JDK_URL
+            default: 'http://openjdk.linaro.org/releases/jdk9-server-release-1708.tar.xz'
+        - string:
+            name: MAVEN_URL
+            default: 'http://www.us.apache.org/dist/maven/maven-3/3.3.9/binaries/apache-maven-3.3.9-bin.tar.gz'
+    disabled: true
+    node: aarch64-06
+    display-name: 'OpenJDK - Build jmh-linaro-org'
+    triggers:
+        # We poll the JMH Mercurial repository, and get triggered by review.linaro.org
+        - pollscm:
+# Poll once an hour. Build if JMH changes, and not just jmh-linaro-org.
+            cron: 'H * * * *'
+        - gerrit:
+            trigger-on:
+                - patchset-created-event:
+                    exclude-drafts: true
+                    exclude-trivial-rebase: true
+                    exclude-no-code-change: true
+                - change-merged-event
+            server-name: 'review.linaro.org'
+            override-votes: true
+            gerrit-build-successful-verified-value: 1
+            gerrit-build-failed-verified-value: -1
+            gerrit-build-successful-codereview-value: 1
+            gerrit-build-failed-codereview-value: -1
+            readable-message: true
+            successful-message: 'Build Successful'
+            failure-message: 'Build FAILED'
+            trigger-for-unreviewed-patches: true
+            projects:
+                - project-compare-type: 'PLAIN'
+                  project-pattern: 'leg/openjdk/jmh-linaro-org'
+                  branches:
+                    - branch-compare-type: 'ANT'
+                      branch-pattern: '**'
+    wrappers:
+        - timestamps
+    scm:
+        - jmh
+        - jmh-linaro-org
+    builders:
+        - shell: |
+            #!/bin/bash
+
+            set -exu
+
+            rm -rf jdk* apache-maven-*
+
+            wget --progress=dot -e dotbytes=2M ${JDK_URL} ${MAVEN_URL}
+            tar -Jxf jdk*.tar.xz
+            tar -zxf apache-maven-*.tar.gz
+
+            cd jdk*/lib/security/
+            rm -f cacerts
+            ln -s /etc/ssl/certs/java/cacerts
+
+            cd ${WORKSPACE}/jdk*
+            export JAVA_HOME=${PWD}
+
+            cd ${WORKSPACE}/apache-maven-*
+            export M3_HOME=${PWD}
+
+            export PATH=${JAVA_HOME}/bin:${M3_HOME}/bin:${PATH}
+            which java
+            java -version
+            mvn -version
+
+            # Only go through complete jmh build and test on periodic builds.
+            # There is a possibility of jmh being updated when patches are pushed
+            # to gerrit, but this should be triggered by the polling soon enough
+            if [ "${GERRIT_EVENT_TYPE:-}" = ""  ]; then
+                cd ${WORKSPACE}/jmh
+                mvn -B clean install
+            else
+                cd ${WORKSPACE}/jmh/jmh-linaro-org
+                git fetch https://review.linaro.org/$GERRIT_PROJECT $GERRIT_REFSPEC && git checkout FETCH_HEAD
+            fi
+
+            # Builds the samples and jmh, without running unit tests.
+            cd ${WORKSPACE}/jmh/jmh-linaro-org
+            mvn -B clean install
+    publishers:
+        - archive:
+            artifacts: 'jmh/jmh-linaro-org/target/benchmarks.jar'
+        - email:
+            recipients: 'stuart.monteith@linaro.org'

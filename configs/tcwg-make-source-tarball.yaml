@@ -1,0 +1,104 @@
+- job:
+    name: tcwg-make-source-tarball
+    project-type: freestyle
+    defaults: global
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+                - job-extended-read
+            linaro:
+                - job-build
+                - job-cancel
+        - build-discarder:
+            days-to-keep: 10
+            num-to-keep: 10
+    parameters:
+        - string:
+            name: tag
+            default: ''
+            description: 'GCC tagged version to use (like linaro-6.3-2017.03).'
+        - string:
+            name: upload_dir
+            default: ''
+            description: 'Destination directory on dev-01 (Artifacts only when empty).'
+    disabled: false
+    node: tcwg-x86_64-dev-01
+    retry-count: 3
+    concurrent: true
+    display-name: 'TCWG Make GCC Source Tarball'
+    scm:
+        - git:
+            url: http://git.linaro.org/toolchain/gcc.git
+            refspec: +refs/heads/*:refs/remotes/origin/*
+            branches:
+                - refs/heads/master
+            basedir: gcc_src
+            per-build-tag: false
+            shallow-clone: false
+            wipe-workspace: true
+            reference-repo: /home/tcwg-buildslave/snapshots-ref/gcc.git
+            timeout: 120
+            clean:
+                before: true
+    execution-strategy:
+        sequential: false
+    wrappers:
+        - timeout:
+            timeout: 300
+        - timestamps
+        - ssh-agent-credentials:
+            # tcwg-buildslave user id
+            users:
+                - 'e0958a95-204f-4c14-a66c-5e2be6c5d50a'
+        - build-name:
+            name: '#${BUILD_NUMBER}-${tag}'
+    builders:
+        - shell: |
+            #!/bin/bash
+            set -ex
+
+            rm -rf jenkins-scripts
+            git clone --depth 1 https://git.linaro.org/toolchain/jenkins-scripts
+            . jenkins-scripts/jenkins-helpers.sh
+
+            rm -rf tcwg-release-tools
+            git clone -b automation --depth 1 https://git.linaro.org/toolchain/tcwg-release-tools
+
+            rm -rf release_build
+            mkdir -p ${WORKSPACE}/release_build
+
+            rm -rf artifacts
+            mkdir -p ${WORKSPACE}/artifacts
+
+            # Start build container
+            host=$(print_host_for_node $NODE_NAME)
+            bash ${WORKSPACE}/jenkins-scripts/start-container-docker.sh --arch amd64 --session-host ${host} > build-container.sh
+
+            # Define CONTAINER, CONTAINER_CLEANUP, session_host and session_port
+            . ./build-container.sh
+            BUILD_CONTAINER="${CONTAINER}"
+            BUILD_CONTAINER_CLEANUP="${CONTAINER_CLEANUP}"
+
+            # Make sure to cleanup build container if something goes
+            # wrong when preparing the test environment
+            if [ x"${BUILD_CONTAINER_CLEANUP}" != x ]; then
+                CONTAINERS_CLEANUP="${BUILD_CONTAINER_CLEANUP}"
+                trap "${CONTAINERS_CLEANUP}" EXIT
+            fi
+
+            # Setup job parameters and run
+            ${BUILD_CONTAINER} "sudo apt-get update ; sudo apt-get -y install libgmp-dev libmpfr-dev libmpc-dev"
+            ${BUILD_CONTAINER} "bash -x ${WORKSPACE}/tcwg-release-tools/tcwg-release-tarball.sh -g ${WORKSPACE}/gcc_src -r ${WORKSPACE}/release_build -t ${tag}"
+
+            cp release_build/gcc-${tag}/*.tar.* artifacts/.
+            cp release_build/gcc-${tag}/gcc-${tag}/ChangeLog.linaro artifacts/.
+
+            if [ "${upload_dir:+set}" = "set" ]; then
+                mkdir -p "$upload_dir"
+                rsync -a artifacts/ "$upload_dir"
+            fi
+    publishers:
+        - archive:
+            artifacts: 'artifacts/*'
+            latest-only: false

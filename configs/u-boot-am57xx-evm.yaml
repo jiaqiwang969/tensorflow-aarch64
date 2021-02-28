@@ -1,0 +1,140 @@
+- job:
+    name: u-boot-am57xx-evm
+    project-type: freestyle
+    defaults: global
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+                - job-extended-read
+            linaro:
+                - job-read
+                - job-extended-read
+                - job-build
+                - job-cancel
+        - build-discarder:
+            days-to-keep: 30
+            num-to-keep: 30
+    disabled: false
+    node: docker-buster-amd64
+    display-name: 'U-Boot upstream (mainline) for am57xx-evm'
+    scm:
+        - git:
+            url: https://github.com/u-boot/u-boot
+            refspec: +refs/heads/master:refs/remotes/origin/master
+            name: origin
+            branches:
+                - refs/heads/master
+            skip-tag: true
+            shallow-clone: false
+            wipe-workspace: false
+    triggers:
+        - pollscm: 'H/5 * * * *'
+    wrappers:
+        - timestamps
+        - build-name:
+            name: '#${BUILD_NUMBER}-${GIT_REVISION,length=8}'
+        - credentials-binding:
+            - text:
+                credential-id: QA_REPORTS_TOKEN
+                variable: QA_REPORTS_TOKEN
+    builders:
+        - linaro-publish-token
+        - shell: |
+            #!/bin/bash
+
+            env |grep GIT
+
+            set -ex
+
+            trap cleanup_exit INT TERM EXIT
+
+            cleanup_exit()
+            {
+              cd ${WORKSPACE}
+              rm -rf build out
+              git clean -fdx
+              git reset --hard
+              #sudo umount bootfs || true
+              #sudo kpartx -dv x15-install.img || true
+            }
+
+            sudo apt-get update
+            sudo apt-get install -y libssl-dev python-requests rsync \
+                swig libpython-dev gcc-arm-linux-gnueabihf \
+                parted kpartx pigz python-pip virtualenv
+
+            cat Makefile
+            export CC=arm-linux-gnueabihf-
+            make ARCH=arm CROSS_COMPILE=${CC} distclean
+            make ARCH=arm CROSS_COMPILE=${CC} am57xx_evm_defconfig
+            make ARCH=arm CROSS_COMPILE=${CC}
+
+            mkdir -p out bootfs
+
+            # create x15 boot image
+            dd if=/dev/zero of=x15-install.img bs=48 seek=1M count=0
+            /sbin/parted --script x15-install.img mklabel msdos
+            /sbin/parted --script x15-install.img mkpart p fat32 0 48
+            /sbin/parted --script x15-install.img set 1 boot
+            for device in $(sudo kpartx -avs x15-install.img | cut -d' ' -f3); do
+              partition=$(echo ${device} | cut -d'p' -f3)
+              case "${partition}" in
+                1)
+                  sudo mkfs.fat -F16 /dev/mapper/${device}
+                  sudo mount /dev/mapper/${device} bootfs
+                  ;;
+              esac
+            done
+            sudo cp MLO bootfs
+            sudo cp u-boot.img bootfs
+
+            sudo umount bootfs
+            sudo kpartx -dv x15-install.img
+            time pigz -9 x15-install.img
+            mv x15-install.img.gz out/x15-u-boot-sd-${BUILD_NUMBER}.img.gz
+
+            ./scripts/setlocalversion --save-scmversion
+            GIT_TAG=$(git describe --abbrev=0)
+            LOCALVERSION=$(cat .scmversion)
+            # remove leading 'v' as it doesn't show up in u-boot version string
+
+            cat << EOF > ${WORKSPACE}/submit_for_testing_parameters
+            BUILD_NUMBER=${BUILD_NUMBER}
+            UBOOT_VERSION_STRING="${GIT_TAG:1}${LOCALVERSION}"
+            LAVA_JOB_PRIORITY=50
+            IMAGE_URL="http://snapshots.linaro.org/components/kernel/u-boot/${BUILD_NUMBER}/x15-u-boot-sd-${BUILD_NUMBER}.img.gz"
+            IMAGE_COMP=gz
+            PROJECT_NAME=ti-uboot
+            PROJECT=projects/ti/
+            EOF
+
+            cp .config out/config
+            cp MLO u-boot.img u-boot-dtb.bin arch/arm/dts/*.dtb spl/u-boot-spl.bin spl/u-boot-spl.dtb out/
+            test -d ${HOME}/bin || mkdir ${HOME}/bin
+            wget -q https://git.linaro.org/ci/publishing-api.git/blob_plain/HEAD:/linaro-cp.py -O ${HOME}/bin/linaro-cp.py
+
+            time python3 ${HOME}/bin/linaro-cp.py \
+              --api_version 3 \
+              --link-latest \
+              out components/kernel/u-boot/${BUILD_NUMBER}
+
+            # submit tests to LAVA
+            rm -rf venv | true
+            virtualenv -p python3 venv
+            source ./venv/bin/activate
+
+            git clone https://github.com/Linaro/lava-test-plans.git
+            cd lava-test-plans
+            pip install -r requirements.txt
+            ./submit_for_testing.py --variables ${WORKSPACE}/submit_for_testing_parameters \
+              --device-type x15-bl \
+              --test-plan ti-uboot \
+              --qa-server-team ti \
+              --qa-server-project u-boot \
+              --lava-server https://validation.linaro.org \
+              --build-id ${BUILD_NUMBER}-${GIT_COMMIT,length=8}
+
+    publishers:
+        - email:
+            recipients: 'vishal.bhoj@linaro.org'

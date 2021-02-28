@@ -1,0 +1,79 @@
+- job:
+    name: tcwg-reboot
+    project-type: freestyle
+    defaults: global
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+                - job-extended-read
+            linaro:
+                - job-build
+                - job-cancel
+        - build-discarder:
+            days-to-keep: 30
+            num-to-keep: 100
+        - throttle:
+            max-per-node: 1
+            option: project
+        - build-blocker:
+            blocking-jobs:
+              - "tcwg.*"
+            block-level: 'NODE'
+    parameters:
+        - label:
+            name: node_list
+            default: tcwg-apm_64-build
+            all-nodes: true
+            matching-label: 'allCases'
+            node-eligibility: 'ignore-offline'
+            description: 'Machines to run on'
+        - bool:
+            name: dry_run
+            default: 'false'
+            description: 'Whether to do a dry-run'
+    disabled: false
+    concurrent: true
+    display-name: 'TCWG CCC Reboot periodically'
+    triggers:
+        - timed: '@daily'
+    wrappers:
+        - timeout:
+            timeout: 600
+        - timestamps
+        - ssh-agent-credentials:
+            # tcwg-buildslave user id
+            users:
+                - 'e0958a95-204f-4c14-a66c-5e2be6c5d50a'
+        - build-name:
+            name: '#${BUILD_NUMBER}-${NODE_NAME}'
+    builders:
+        - shell: |
+            #!/bin/bash
+
+            set -ex
+
+            if $dry_run ; then
+                DRYRUN=echo
+            else
+                DRYRUN=
+            fi
+
+            $DRYRUN ssh -p22 -o StrictHostKeyChecking=no localhost "sudo reboot; sleep 60"
+            # We expect non-zero exit when node is rebooted.  If we get here
+            # that means we have a failure (unless $dry_run, of course).
+            if $dry_run; then
+              echo "DRY-RUN: Ignoring failure to reboot"
+              false
+            else
+              echo "ERROR: Failed to reboot"
+              true
+            fi
+    publishers:
+        - email-ext:
+            recipients: tcwg-validation@linaro.org
+            content-type: text
+            subject: '[CI-NOTIFY]: ${PROJECT_NAME} on ${NODE_NAME} - Build # ${BUILD_NUMBER} ${BUILD_STATUS}'
+            aborted: true
+            failure: false
+            success: true

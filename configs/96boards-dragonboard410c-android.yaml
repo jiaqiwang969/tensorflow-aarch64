@@ -1,0 +1,176 @@
+- job:
+    name: 96boards-dragonboard410c-android
+    project-type: freestyle
+    defaults: global
+    logrotate:
+        daysToKeep: 60
+        numToKeep: 60
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+            linaro:
+                - job-build
+                - job-cancel
+    parameters:
+        - string:
+            name: VENDOR_OVERLAY_URL
+            default: http://snapshots.linaro.org/96boards/dragonboard410c/binaries/20170106/proprietary_LA.BR.1.2.7-01010-8x16.0_410C_May.tgz
+        - string:
+            name: BUILD_SCRIPT_URL
+            default: http://snapshots.linaro.org/96boards/dragonboard410c/binaries/20170106/DB410c_build.sh
+        - string:
+            name: USERDATA_OVERLAY_URL
+            default: http://snapshots.linaro.org/96boards/dragonboard410c/binaries/20160523/userdata.tar.bz2
+    disabled: true
+    node: docker-xenial-aosp
+    display-name: '96boards - DragonBoard 410c (Android)'
+    concurrent: true
+    wrappers:
+        - timeout:
+            timeout: 500
+        - timestamps
+        - ssh-agent-credentials:
+                users:
+                    - 'LT_QUALCOMM_PRIVATE_KEY_SSH'
+    builders:
+        - shell: |
+            #!/bin/bash
+
+            java -version
+
+            sudo sed -i -e 's/archive.ubuntu.com\|security.ubuntu.com/old-releases.ubuntu.com/g' /etc/apt/sources.list
+            sudo apt-get update
+            sudo apt-get install -y gcc-4.9-multilib bison git gperf libxml2-utils python-mako zip time python-requests genisoimage rsync
+
+            mkdir -p ${HOME}/bin ${WORKSPACE}/build/out
+            curl https://storage.googleapis.com/git-repo-downloads/repo > ${HOME}/bin/repo
+            chmod a+x ${HOME}/bin/*
+            export PATH=${HOME}/bin:${PATH}
+
+            sudo mkdir -p /home/buildslave/srv/${JOB_NAME}
+            sudo chmod 777 /home/buildslave/srv/${JOB_NAME}
+            cd /home/buildslave/srv/${JOB_NAME}
+
+            git config --global user.email "ci_notify@linaro.org"
+            git config --global user.name "Linaro CI"
+
+            # Runs as ubuntu
+            set -e
+
+            rm -rf PATCH*
+            BUILD_SCRIPT=$(basename ${BUILD_SCRIPT_URL})
+            wget --progress=dot -e dotbytes=2M ${BUILD_SCRIPT_URL} -O ${BUILD_SCRIPT}
+
+            VENDOR_OVERLAY=$(basename ${VENDOR_OVERLAY_URL})
+            wget --progress=dot -e dotbytes=2M ${VENDOR_OVERLAY_URL} -O ${VENDOR_OVERLAY}
+            chmod a+x ${BUILD_SCRIPT}
+            ./${BUILD_SCRIPT}
+
+            cd APQ8016_410C_LA.BR.1.2.7-01010-8x16.0_6.0.1_Marsh_Mallo_P2/
+            rm -rf out/target/product/msm8916_64/*.zip
+            wget https://git.linaro.org/landing-teams/working/qualcomm/lt-docs.git/blob_plain/HEAD:/license/license.txt  -O out/target/product/msm8916_64/system/etc/license.txt
+            cp -aL .repo/manifest.xml out/target/product/msm8916_64/source-manifest.xml
+            repo manifest -r -o out/target/product/msm8916_64/pinned-manifest.xml
+            USERDATA_OVERLAY=(basename ${USERDATA_OVERLAY_URL})
+            wget ${USERDATA_OVERLAY_URL} -O ${USERDATA_OVERLAY}
+            tar -xvjf ${USERDATA_OVERLAY} -C out/target/product/msm8916_64/
+            rm -rf out/target/product/msm8916_64/userdata.img out/target/product/msm8916_64/obj/PACKAGING/userdata_intermediates/
+            source build/envsetup.sh
+            lunch msm8916_64-userdebug
+            make -j8 snod userdataimage
+
+            cd out/target/product/msm8916_64/
+            cp -a *.xml ${WORKSPACE}/
+            for image in "boot.img" "system.img" "userdata.img" "cache.img" "persist.img" "recovery.img"; do
+                echo "Compressing $image"
+                tar -Jcf ${image}.tar.xz ${image}
+            done
+            cd -
+
+
+            #######################################
+            # let's create the SD install image now
+            #######################################
+
+            rm -rf db410c_bootloader
+            git clone --depth 1 ssh://dev-private-git.linaro.org/landing-teams/working/qualcomm/db410c_bootloader.git
+            # record commit info in build log
+            cd db410c_bootloader
+            git log -1
+
+            cp -a /home/buildslave/srv/${JOB_NAME}/APQ8016_410C_LA.BR.1.2.7-01010-8x16.0_6.0.1_Marsh_Mallo_P2/out/target/product/msm8916_64/emmc_appsboot.mbn bootloaders/
+            cd emmc_android
+            # we didn't remove the file in out folder when we compressed earlier, so we
+            # move them here now
+            mv /home/buildslave/srv/${JOB_NAME}/APQ8016_410C_LA.BR.1.2.7-01010-8x16.0_6.0.1_Marsh_Mallo_P2/out/target/product/msm8916_64/boot.img .
+            mv /home/buildslave/srv/${JOB_NAME}/APQ8016_410C_LA.BR.1.2.7-01010-8x16.0_6.0.1_Marsh_Mallo_P2/out/target/product/msm8916_64/recovery.img .
+            mv /home/buildslave/srv/${JOB_NAME}/APQ8016_410C_LA.BR.1.2.7-01010-8x16.0_6.0.1_Marsh_Mallo_P2/out/target/product/msm8916_64/system.img .
+            mv /home/buildslave/srv/${JOB_NAME}/APQ8016_410C_LA.BR.1.2.7-01010-8x16.0_6.0.1_Marsh_Mallo_P2/out/target/product/msm8916_64/userdata.img .
+            mv /home/buildslave/srv/${JOB_NAME}/APQ8016_410C_LA.BR.1.2.7-01010-8x16.0_6.0.1_Marsh_Mallo_P2/out/target/product/msm8916_64/persist.img .
+            mv /home/buildslave/srv/${JOB_NAME}/APQ8016_410C_LA.BR.1.2.7-01010-8x16.0_6.0.1_Marsh_Mallo_P2/out/target/product/msm8916_64/cache.img .
+
+            cat << EOF >> os.json
+            {
+            "name": "Android for DragonBoard 410c - Build #${BUILD_NUMBER}",
+            "url": "http://releases.linaro.org/96boards/dragonboard410c",
+            "version": "`date +%Y%m%d`-${BUILD_NUMBER}",
+            "release_date": "`date +%Y-%m-%d`",
+            "description": "Android release for DragonBoard 410c"
+            }
+            EOF
+
+            cd ../sd_install
+            # quick hack for now, need to create the proper job that builds the initrd
+            wget --progress=dot -e dotbytes=2M http://people.linaro.org/~nicolas.dechesne/boot-burn.img
+            cd ..
+            ./build sdcard_install_android
+
+            # add license.txt file
+            rm -f license.txt
+            wget https://git.linaro.org/landing-teams/working/qualcomm/lt-docs.git/blob_plain/HEAD:/license/license.txt
+            cp -a license.txt out/dragonboard410c_sdcard_install_android
+
+            # create archive for publishing
+            zip -rj ../out/target/product/msm8916_64/dragonboard410c_sdcard_install_android-${BUILD_NUMBER}.zip out/dragonboard410c_sdcard_install_android
+            cd ..
+
+            # Create MD5SUM
+            cd out/target/product/msm8916_64/
+            md5sum *.txt *.xz *.zip *.mbn *.xml *.img > MD5SUMS.txt
+            cd -
+
+            cat > out/target/product/msm8916_64/BUILD-INFO.txt << EOF
+            Format-Version: 0.5
+
+            Files-Pattern: *
+            License-Type: open
+            EOF
+
+            # Publish parameters
+            cat << EOF > ${WORKSPACE}/publish_parameters
+            PUB_DEST=96boards/dragonboard410c/qualcomm/android/${BUILD_NUMBER}
+            PUB_SRC=${PWD}/out/target/product/msm8916_64/
+            PUB_EXTRA_INC=^[^/]+[._](mbn|zip)
+            EOF
+        - inject:
+            properties-file: publish_parameters
+        - linaro-publish-token
+        - shell:
+            !include-raw:
+                - android/linaro-publisher.sh
+    publishers:
+        - archive:
+            artifacts: '*.xml'
+            latest-only: true
+        - logparser:
+            parse-rules: '/var/jenkins_home/userContent/android.parse'
+            unstable-on-warning: false
+            fail-on-error: false
+        - fingerprint:
+            files: 'build/fingerprints/*'
+        - email:
+            recipients: 'nicolas.dechesne@linaro.org vishal.bhoj@linaro.org fathi.boudra@linaro.org'
+        - email-ext:
+            recipients: 'qa-team@linaro.org'
+            always: true

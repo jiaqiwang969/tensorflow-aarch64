@@ -1,0 +1,36 @@
+- deploy:
+    timeout:
+      minutes: 30
+    to: fastboot
+    namespace: target
+    connection: lxc
+    images:
+      ptable:
+        url: {{DOWNLOAD_URL}}/ptable-aosp-8g.img.xz
+        compression: xz
+        reboot: hard-reset
+      boot:
+        reboot: hard-reset
+        url: {{DOWNLOAD_URL}}/boot.img.xz
+        compression: xz
+      userdata:
+        url: {{DOWNLOAD_URL}}/userdata.img.xz
+        compression: xz
+      system:
+        url: {{DOWNLOAD_URL}}/system.img.xz
+        compression: xz
+      vendor:
+        url: {{DOWNLOAD_URL}}/vendor.img.xz
+        compression: xz
+      nvme:
+        url: {{DOWNLOAD_URL}}/nvme.img.xz
+        compression: xz
+      fastboot:
+        url: {{DOWNLOAD_URL}}/fip.bin.xz
+        compression: xz
+    protocols:
+      lava-lxc:
+      - action: fastboot-deploy
+        request: pre-power-command
+        timeout:
+          minutes: 2

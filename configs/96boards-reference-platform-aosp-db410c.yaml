@@ -1,0 +1,166 @@
+- job:
+    name: 96boards-reference-platform-aosp-db410c
+    project-type: freestyle
+    defaults: global
+    logrotate:
+        daysToKeep: 60
+        numToKeep: 60
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+            linaro:
+                - job-build
+                - job-cancel
+    disabled: true
+    node: docker-xenial-aosp
+    display-name: 'Reference Platform - AOSP (DragonBoard 410c)'
+    concurrent: true
+    wrappers:
+        - timestamps
+        - timeout:
+            timeout: 500
+    builders:
+        - shell: |
+            #!/bin/bash
+
+            set -ex
+
+            java -version
+
+            sudo sed -i -e 's/archive.ubuntu.com\|security.ubuntu.com/old-releases.ubuntu.com/g' /etc/apt/sources.list
+            sudo apt-get update
+            sudo apt-get install -y gcc-4.9-multilib bison git gperf libxml2-utils python-mako zip time python-requests genisoimage patch mtools libfdt-dev python-mako gettext
+
+            mkdir -p ${HOME}/bin ${WORKSPACE}/build/out
+            curl https://storage.googleapis.com/git-repo-downloads/repo > ${HOME}/bin/repo
+            chmod a+x ${HOME}/bin/*
+            export PATH=${HOME}/bin:${PATH}
+
+            if [ ! -d "/home/buildslave/srv/${JOB_NAME}" ]; then
+              sudo mkdir -p /home/buildslave/srv/${JOB_NAME}
+              sudo chmod 777 /home/buildslave/srv/${JOB_NAME}
+            fi
+            cd /home/buildslave/srv/${JOB_NAME}
+
+            git config --global user.email "ci_notify@linaro.org"
+            git config --global user.name "Linaro CI"
+
+            # Clean any artifacts related to previous build
+            rm -rf vendor/db410c
+            rm -rf out/target/product/db410c/system/ out/target/product/db410c/data/ out/target/product/db410c/*.xml out/target/product/db410c/obj/kernel/
+            rm -rf out/target/product/db410c/*.zip out/target/product/db410c/*.img out/target/product/db410c/*.xz
+
+            # Runs as ubuntu
+            repo init -u https://android.googlesource.com/platform/manifest -b android-6.0.1_r16
+            cd .repo
+            rm -rf local_manifests
+            git clone https://github.com/96boards/android_manifest -b android-6.0-db410c local_manifests
+            cd ..
+            repo sync -f --force-sync -j16
+
+            # Extract the proprietary firmware
+            mkdir -p vendor/db410c
+            cd vendor/db410c
+            wget --progress=dot -e dotbytes=1M http://developer.qualcomm.com/download/db410c/firmware-410c-1.2.0.bin
+            yes | sh firmware-410c-1.2.0.bin > /dev/null
+            cd ../..
+
+            mkdir -p out
+            cp .repo/manifest.xml out/source-manifest.xml
+            repo manifest -r -o out/pinned-manifest.xml
+
+            source build/envsetup.sh
+            lunch db410c-userdebug
+            make droidcore -j8
+
+            cd out/target/product/db410c/
+            for image in "boot-db410c.img" "system.img" "userdata.img" "cache.img" "dt.img" "ramdisk.img"; do
+                echo "Compressing ${image}"
+                xz -z ${image}
+            done
+            cd -
+
+            cp -a /home/buildslave/srv/${JOB_NAME}/out/*.xml /home/buildslave/srv/${JOB_NAME}/out/target/product/db410c/
+            cp -a /home/buildslave/srv/${JOB_NAME}/out/*.xml ${WORKSPACE}/
+
+            # Create MD5SUM
+            cd out/target/product/db410c/
+            md5sum *.txt *.xz *.xml *.img > MD5SUMS.txt
+            cd -
+
+            # Build information
+            cat > out/target/product/db410c/HEADER.textile << EOF
+
+            h4. Reference Platform Build - AOSP (DragonBoard 410c)
+
+            Build description:
+            * Build URL: "$BUILD_URL":$BUILD_URL
+
+            Please also check "RPB-AOSP-DragonBoard410c-Build":https://github.com/96boards/documentation/wiki/RPB-AOSP-DragonBoard410c-Build for more information about this build.
+
+            Install (also check the bootloader "install guide":https://github.com/96boards/documentation/wiki/Dragonboard-410c-Installation-Guide-for-Linux-and-Android#install-android-release):
+
+            bc. wget https://snapshots.linaro.org/96boards/reference-platform/aosp/db410c/${BUILD_NUMBER}/boot-db410c.img.xz
+            wget https://snapshots.linaro.org/96boards/reference-platform/aosp/db410c/${BUILD_NUMBER}/cache.img.xz
+            wget https://snapshots.linaro.org/96boards/reference-platform/aosp/db410c/${BUILD_NUMBER}/system.img.xz
+            wget https://snapshots.linaro.org/96boards/reference-platform/aosp/db410c/${BUILD_NUMBER}/userdata.img.xz
+            for f in *.xz; do xz -d \$f; done
+            sudo fastboot flash boot boot-db410c.img
+            sudo fastboot flash system system.img
+            sudo fastboot flash userdata userdata.img
+            sudo fastboot flash cache cache.img
+
+            EOF
+
+            cat > out/target/product/db410c/BUILD-INFO.txt << EOF
+            Format-Version: 0.5
+
+            Files-Pattern: *
+            License-Type: open
+            EOF
+
+            # Publish parameters
+            cat << EOF > ${WORKSPACE}/publish_parameters
+            PUB_SRC=${PWD}/out/target/product/db410c/
+            PUB_DEST=96boards/reference-platform/aosp/db410c/${BUILD_NUMBER}
+            PUB_EXTRA_INC=^(BUILD-INFO.txt|HEADER.textile)$
+            EOF
+
+            # Construct post-build-lava parameters
+            cat << EOF > ${WORKSPACE}/post_build_lava_parameters
+            DEVICE_TYPE=apq8016-sbc
+            TARGET_PRODUCT=${TARGET_PRODUCT}
+            MAKE_TARGETS=${MAKE_TARGETS}
+            JOB_NAME=${JOB_NAME}
+            BUILD_NUMBER=${BUILD_NUMBER}
+            BUILD_URL=${BUILD_URL}
+            DOWNLOAD_URL=${PUBLISH_SERVER}/${PUB_DEST}
+            LAVA_SERVER=validation.linaro.org/RPC2/
+            IMAGE_EXTENSION=img.xz
+            FRONTEND_JOB_NAME=${JOB_NAME}
+            DOWNLOAD_URL=${PUBLISH_SERVER}/${PUB_DEST}
+            CUSTOM_JSON_URL=https://git.linaro.org/ci/job/configs.git/blob_plain/refs/heads/master:/96boards-reference-platform-aosp/lava-job-definitions/apq8016-sbc/template-boot.json
+            EOF
+        - inject:
+            properties-file: publish_parameters
+        - linaro-publish-token
+        - shell:
+            !include-raw:
+                - android/linaro-publisher.sh
+        - trigger-builds:
+            - project: 'post-build-lava'
+              property-file: post_build_lava_parameters
+              block: true
+    publishers:
+        - archive:
+            artifacts: '*.xml'
+            latest-only: true
+        - logparser:
+            parse-rules: '/var/jenkins_home/userContent/android.parse'
+            unstable-on-warning: false
+            fail-on-error: false
+        - fingerprint:
+            files: 'build/fingerprints/*'
+        - email:
+            recipients: 'fathi.boudra@linaro.org vishal.bhoj@linaro.org'

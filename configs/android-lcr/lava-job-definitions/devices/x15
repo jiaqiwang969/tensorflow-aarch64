@@ -1,0 +1,34 @@
+{% extends "lcr.jinja2" %}
+
+{% block device_type %}x15{% endblock %}
+
+{% block deploy_target %}
+- deploy:
+    timeout:
+      minutes: 25
+    to: fastboot
+    namespace: target
+    connection: lxc
+    images:
+      boot_a:
+        url: {{DOWNLOAD_URL}}/boot.img
+      boot_b:
+        url: {{DOWNLOAD_URL}}/boot.img
+      vbmeta_a:
+        url: {{DOWNLOAD_URL}}/vbmeta.img
+      vbmeta_b:
+        url: {{DOWNLOAD_URL}}/vbmeta.img
+      userdata:
+        url: {{DOWNLOAD_URL}}/userdata.img
+      super:
+        url: {{DOWNLOAD_URL}}/super.img
+      recovery:
+        url: {{DOWNLOAD_URL}}/recovery.img
+{% endblock deploy_target %}
+
+{% block boot_target %}
+{% include "devices/x15-boot" %}
+{% endblock boot_target %}
+
+{% block test_target %}
+{% endblock test_target %}

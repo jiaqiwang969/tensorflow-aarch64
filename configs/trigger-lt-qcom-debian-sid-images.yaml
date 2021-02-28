@@ -1,0 +1,53 @@
+- job:
+    name: trigger-lt-qcom-debian-sid-images
+    project-type: freestyle
+    defaults: global
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+                - job-extended-read
+                - job-workspace
+            linaro-landing-team-qualcomm-personnel:
+                - job-read
+                - job-extended-read
+                - job-build
+                - job-cancel
+        - build-discarder:
+            days-to-keep: 30
+            num-to-keep: 30
+    disabled: false
+    node: triggers
+    display-name: 'Trigger for Qualcomm Debian Sid based images'
+    scm:
+        - git:
+            url: https://git.linaro.org/git/ci/fai.git
+            refspec: +refs/heads/master:refs/remotes/origin/master
+            name: origin
+            branches:
+                - refs/heads/master
+            skip-tag: true
+            shallow-clone: false
+            wipe-workspace: false
+    triggers:
+        - pollscm: 'H/5 * * * *'
+        - pollurl:
+            cron: '@hourly'
+            polling-node: build
+            urls:
+              - url: 'http://obs.linaro.org/linaro-overlay-sid/sid/Release'
+                check-content:
+                  - simple: true
+    wrappers:
+        - timestamps
+    builders:
+        - trigger-builds:
+            - project: 'lt-qcom-debian-images-dragonboard410c'
+            - project: 'lt-qcom-debian-images-dragonboard820c'
+            - project: 'lt-qcom-debian-images-dragonboard845c'
+            - project: 'lt-qcom-debian-images-qrb5165-rb5'
+    publishers:
+        - email-ext:
+            recipients: 'anibal.limon@linaro.org nicolas.dechesne@linaro.org'
+            failure: true
+            still-failing: true

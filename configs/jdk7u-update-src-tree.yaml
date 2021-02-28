@@ -1,0 +1,93 @@
+- scm:
+    name: jdk7u
+    scm:
+        - hg:
+            url: https://hg.openjdk.java.net/jdk7u/jdk7u
+            clean: true
+            subdir: jdk7u
+- scm:
+    name: corba
+    scm:
+        - hg:
+            url: https://hg.openjdk.java.net/jdk7u/jdk7u/corba
+            clean: true
+            subdir: jdk7u/corba
+- scm:
+    name: hotspot
+    scm:
+        - hg:
+            url: https://hg.openjdk.java.net/jdk7u/jdk7u/hotspot
+            clean: true
+            subdir: jdk7u/hotspot
+- scm:
+    name: jaxp
+    scm:
+        - hg:
+            url: https://hg.openjdk.java.net/jdk7u/jdk7u/jaxp
+            clean: true
+            subdir: jdk7u/jaxp
+- scm:
+    name: jaxws
+    scm:
+        - hg:
+            url: https://hg.openjdk.java.net/jdk7u/jdk7u/jaxws
+            clean: true
+            subdir: jdk7u/jaxws
+- scm:
+    name: jdk
+    scm:
+        - hg:
+            url: https://hg.openjdk.java.net/jdk7u/jdk7u/jdk
+            clean: true
+            subdir: jdk7u/jdk
+- scm:
+    name: langtools
+    scm:
+        - hg:
+            url: https://hg.openjdk.java.net/jdk7u/jdk7u/langtools
+            clean: true
+            subdir: jdk7u/langtools
+- job:
+    name: jdk7u-update-src-tree
+    project-type: freestyle
+    defaults: global
+    description: |
+        * Polls the upstream jdk7 source tree(s) and archives the source tree.
+    logrotate:
+        numToKeep: 10
+        artifactNumToKeep: 1
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+                - job-extended-read
+            linaro:
+                - job-build
+                - job-cancel
+    disabled: true
+    node: aarch64-06
+    display-name: 'OpenJDK - Archive jdk7 source tree'
+    scm:
+        - jdk7u
+        - corba
+        - hotspot
+        - jaxp
+        - jaxws
+        - jdk
+        - langtools
+    triggers:
+        - pollscm: 'H 10 * * *'
+    wrappers:
+        - timestamps
+    builders:
+        - shell: |
+            #!/bin/bash
+
+            set -exu
+
+            rm -rf out
+            mkdir out
+            tar --exclude=.hg -acf out/jdk7u.tar.gz jdk7u
+    publishers:
+        - archive:
+            artifacts: 'out/jdk7u.tar.gz'

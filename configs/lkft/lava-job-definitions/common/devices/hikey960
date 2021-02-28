@@ -1,0 +1,62 @@
+{% extends "template-lkft.yaml" %}
+
+{% block device_type %}hi960-hikey{% endblock %}
+
+{% block secrets %}
+  {{ super() }}
+  AP_SSID: "{{AP_SSID}}"
+  AP_KEY: "{{AP_KEY}}"
+{% endblock %}
+
+{% block deploy_target %}
+- deploy:
+    timeout:
+      minutes: 15
+    to: fastboot
+    namespace: target
+    connection: lxc
+    images:
+      ptable:
+        url: https://images.validation.linaro.org/snapshots.linaro.org/96boards/reference-platform/components/uefi-staging/85/hikey960/release/prm_ptable.img
+        reboot: hard-reset
+      boot:
+        reboot: hard-reset
+        url: {{DOWNLOAD_URL}}/boot.img.xz
+        compression: xz
+      userdata:
+        url: {{REFERENCE_BUILD_URL}}/userdata.img.xz
+        compression: xz
+{% if HIKEY960_SUPPORT_SUPER is defined %}
+      super:
+        url: {{REFERENCE_BUILD_URL}}/super.img.xz
+        compression: xz
+{% else %}
+      system:
+        url: {{REFERENCE_BUILD_URL}}/system.img.xz
+        compression: xz
+      vendor:
+        url: {{REFERENCE_BUILD_URL}}/vendor.img.xz
+        compression: xz
+{% endif %}
+    protocols:
+      lava-lxc:
+      - action: fastboot-deploy
+        request: pre-power-command
+        timeout:
+          minutes: 2
+{% endblock deploy_target %}
+
+{% block boot_target %}
+- boot:
+    namespace: target
+    prompts:
+    - 'root@(.*):/#'
+    - 'hikey:/'
+    - 'console:/'
+    timeout:
+      minutes: 15
+    method: fastboot
+{% endblock boot_target %}
+
+{% block test_target %}
+{% endblock test_target %}

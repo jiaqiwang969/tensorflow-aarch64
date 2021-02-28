@@ -1,0 +1,58 @@
+- job:
+    name: ci-dockerslaves-cleanup
+    project-type: matrix
+    defaults: global
+    properties:
+        - authorization:
+            anonymous:
+                - job-discover
+            linaro:
+                - job-read
+                - job-extended-read
+        - build-discarder:
+            days-to-keep: 20
+            num-to-keep: 50
+        - build-blocker:
+            use-build-blocker: true
+            blocking-jobs:
+              - "ci-docker*"
+            block-level: 'NODE'
+            queue-scanning: 'ALL'
+    disabled: false
+    node: master
+    concurrent: false
+    display-name: 'CI docker cleanup and image update'
+    triggers:
+        - timed : '@daily'
+    axes:
+        - axis:
+            type: slave
+            name: nodes
+            values:
+                - aarch64-08
+                - aosp-x86_64-07
+                - aosp-x86_64-08
+                - leg-aarch64-01
+                - lhg-01
+                - lkft-x86_64-01
+                - oe-x86_64-01
+                - oe-x86_64-02
+                - x86_64-07
+                - x86_64-08
+                - x86_64-09
+                - x86_64-10
+                - x86_64-11
+                - x86_64-12
+                - x86_64-13
+                - x86_64-14
+                - x86_64-16
+    execution-strategy:
+        sequential: false
+    wrappers:
+        - timestamps
+    builders:
+        - shell:
+            !include-raw: ci-dockerfiles-deployment/cleanup-update.sh
+    publishers:
+        - email:
+            recipients: linaro-infrastructure-errors@lists.linaro.org

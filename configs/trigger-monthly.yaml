@@ -1,0 +1,23 @@
+- job:
+    name: trigger-monthly
+    project-type: freestyle
+    defaults: global
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+        - build-discarder:
+            days-to-keep: 30
+            num-to-keep: 30
+    disabled: false
+    node: triggers
+    display-name: 'Trigger to launch monthly rebuilds'
+    triggers:
+        - timed: '@monthly'
+    wrappers:
+        - timestamps
+    builders:
+        - trigger-builds:
+            - project: '96boards-b2260'
+        - trigger-builds:
+            - project: '96boards-hikey-debian'

@@ -1,0 +1,91 @@
+- job:
+    name: linaro-art-tip-build-MicroBenchmarks
+    project-type: freestyle
+    defaults: global
+    description: >
+      Runs the
+      <a href="https://android-git.linaro.org/linaro-art/art-build-scripts.git/tree/benchmarks/benchmarks_run_target.sh">Microbenchmarks Test script </a>
+      on the tip.<br>
+      This runs on the Pixel 3 only.
+      This build is part of the builds that are triggered using the "IncludeAllTests" comment in a Gerrit patch.<br>
+      This build can also be triggered in isolation with the  "IncludeBenchmarks" comment.
+    properties:
+        - authorization:
+            anonymous:
+                - job-discover
+            linaro-android-builders:
+                - job-read
+                - job-extended-read
+                - job-workspace
+            linaro-art:
+                - job-build
+                - job-read
+                - job-extended-read
+                - job-workspace
+        - build-discarder:
+            days-to-keep: 60
+            num-to-keep: 60
+    parameters:
+        - string:
+            name: ADB_VERSION
+            default: 'adb-tip'
+        - string:
+            name: BUILD_CONFIG_REPO
+            default: 'git://android-git.linaro.org/android-build-configs.git'
+        - string:
+            name: BUILD_CONFIG_BRANCH
+            default: 'master'
+        - string:
+            name: BUILD_CONFIG_FILENAME
+            default: 'linaro-art-tip'
+    disabled: false
+    node: docker-bionic-art
+    display-name: 'Tip: Benchmarks (Pixel 3)'
+    concurrent: true
+    triggers:
+        - gerrit:
+            override-votes: true
+            gerrit-build-successful-verified-value: 1
+            gerrit-build-failed-verified-value: -1
+            trigger-on:
+                - comment-added-contains-event:
+                    comment-contains-value: '.*IncludeAllTests.*'
+                - comment-added-contains-event:
+                    comment-contains-value: '.*IncludeBenchmarks.*'
+            projects:
+                - project-compare-type: 'PLAIN'
+                  project-pattern: 'linaro-art/platform/build'
+                  branches:
+                      - branch-pattern: 'master'
+                - project-compare-type: 'PLAIN'
+                  project-pattern: 'linaro-art/platform/art'
+                  branches:
+                      - branch-pattern: 'master'
+                - project-compare-type: 'PLAIN'
+                  project-pattern: 'linaro-art/platform/external/vixl'
+                  branches:
+                      - branch-pattern: 'master'
+    wrappers:
+        - timestamps
+        - timeout:
+            timeout: 500
+        - ssh-agent-credentials:
+                users:
+                    - '768c1ba1-6052-4b97-a531-7e4fabda6979'
+        - credentials-binding:
+            - text:
+                credential-id: QA_REPORTS_TOKEN
+                variable: QA_REPORTS_TOKEN
+    builders:
+         !include: linaro-art/microbenchmarks/builders.yaml.inc
+    publishers:
+        - archive:
+            artifacts: '*.txt, *.xml, *.json'
+        - logparser:
+            parse-rules: '/var/jenkins_home/userContent/android-art.parse'
+            unstable-on-warning: false
+            fail-on-error: false
+        - groovy-postbuild:
+            script:
+              !include-raw:
+                - linaro-art/global.groovy

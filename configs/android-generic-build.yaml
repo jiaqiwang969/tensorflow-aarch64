@@ -1,0 +1,55 @@
+- job:
+    name: android-generic-build
+    project-type: freestyle
+    defaults: global
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+                - job-extended-read
+            linaro:
+                - job-build
+                - job-cancel
+        - build-discarder:
+            days-to-keep: 60
+            num-to-keep: 60
+    parameters:
+        - string:
+            name: ANDROID_MANIFEST_URL
+            default: https://android.googlesource.com/platform/manifest
+        - string:
+            name: MANIFEST_BRANCH
+            default: android-7.0.0_r14
+        - string:
+            name: LUNCH_TARGET
+            default: hikey-userdebug
+        - string:
+            name: PATCHSETS
+            default: ''
+        - string:
+            name: BLOBS_URL
+            default: ''
+            description: |
+                * Multiple vendor blobs separated by "#"
+                * Only Blobs from AOSP are currently supported
+                * Please package the blobs the way AOSP does if you wish to to include your own binaries
+        - choice:
+            name: BUILD_TYPE
+            choices:
+              - private
+              - public
+            description: |
+                * All the builds are Linaro internal by default. Please select public if the build is intended to be accessible to everyone.
+                * WARNING: Please make sure builds with vendor binaries are not made public unless you have the right to distribute them.
+    disabled: false
+    node: docker-xenial-aosp
+    display-name: 'Generic AOSP build'
+    concurrent: true
+    wrappers:
+        - timestamps
+        - timeout:
+            timeout: 500
+    builders:
+        !include: android-lcr/generic/builders.yaml.inc
+    publishers:
+        !include: android-lcr/common/publishers.yaml.inc

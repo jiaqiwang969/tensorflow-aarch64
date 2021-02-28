@@ -1,0 +1,142 @@
+{
+    "timeout": 900,
+    "job_name": "${BUILD_URL}",
+    "logging_level": "INFO",
+    "vm_group": {
+        "host": {
+            "device_type": "mustang",
+            "role": "host"
+        },
+        "auto_start_vms": false,
+        "vms": [{
+            "device_type": "kvm-aarch64",
+            "role": "guest-nonsecure"
+        },{
+            "device_type": "kvm-aarch64",
+            "role": "guest-secure"
+        },{
+            "device_type": "kvm-aarch64",
+            "role": "guest-grub-secure"
+        },{
+            "device_type": "kvm-aarch32",
+            "role": "guest-nonsecure-arm32"
+        }]
+    },
+    "actions": [
+        {
+            "command": "deploy_linaro_kernel",
+            "parameters": {
+                "dtb": "http://people.linaro.org/~ard.biesheuvel/lava-uefi/stable-v4.0.4/apm-mustang.dtb",
+                "kernel": "http://people.linaro.org/~ard.biesheuvel/lava-uefi/stable-v4.0.4/Image",
+                "overlays": ["http://people.linaro.org/~ard.biesheuvel/lava-uefi/stable-v4.0.4/modules.tar.xz"],
+                "nfsrootfs": "http://releases.linaro.org/15.03/ubuntu/utopic-images/nano-arm64/linaro-utopic-nano-20150309-90.tar.gz",
+                "target_type": "ubuntu",
+                "role": "host"
+            }
+        },
+        {
+            "command": "deploy_linaro_kernel",
+            "parameters": {
+                "kernel": "http://snapshots.linaro.org/kernel-hwpack/linux-mainline/defconfig/${KERNEL_BUILD_NUM}/Image",
+                "ramdisk": "http://storage.kernelci.org/images/rootfs/buildroot/arm64/rootfs.cpio.gz",
+                "firmware": "${QEMU_EFI_URL}/QEMU-AARCH64/RELEASE_GCC49/QEMU_EFI.img.gz",
+                "role": "guest-nonsecure"
+            }
+        },
+        {
+            "command": "deploy_linaro_kernel",
+            "parameters": {
+                "kernel": "http://people.linaro.org/~ard.biesheuvel/lava-uefi/secureboot/Image",
+                "ramdisk": "http://storage.kernelci.org/images/rootfs/buildroot/arm64/rootfs.cpio.gz",
+                "qemu_pflash": ["${QEMU_EFI_URL}/QEMU-AARCH64/RELEASE_GCC49/QEMU_EFI.img.gz", "http://people.linaro.org/~ard.biesheuvel/lava-uefi/secureboot/vars.bin.gz"],
+                "role": "guest-secure"
+            }
+        },
+        {
+            "command": "deploy_linaro_kernel",
+            "parameters": {
+                "kernel": "http://people.linaro.org/~ard.biesheuvel/lava-uefi/secureboot/grubaa64.efi",
+                "rootfs": "http://people.linaro.org/~ard.biesheuvel/lava-uefi/secureboot/vexpress64-openembedded_minimal-armv8.img.gz",
+                "qemu_pflash": ["${QEMU_EFI_URL}/QEMU-AARCH64/RELEASE_GCC49/QEMU_EFI.img.gz", "http://people.linaro.org/~ard.biesheuvel/lava-uefi/secureboot/grub-vars.bin.gz"],
+                "role": "guest-grub-secure"
+            }
+        },
+        {
+            "command": "deploy_linaro_kernel",
+            "parameters": {
+                "kernel": "http://people.linaro.org/~ard.biesheuvel/lava-uefi/arm32-efi/zImage",
+                "ramdisk": "http://storage.kernelci.org/images/rootfs/buildroot/armel/rootfs.cpio.gz",
+                "firmware": "${QEMU_EFI_URL}/QEMU-ARM/RELEASE_GCC49/QEMU_EFI.img.gz",
+                "role": "guest-nonsecure-arm32"
+            }
+        },
+        {
+            "command": "lava_test_shell",
+            "parameters": {
+                "testdef_repos": [
+                {
+                    "url": "https://git.linaro.org/ci/uefi.git/blob_plain/HEAD:/lava/kvm-install-qemu-host.yaml"
+                }],
+                "timeout": 1800,
+                "role": "host"
+            }
+        },
+        {
+            "command": "lava_test_shell",
+            "parameters": {
+                "testdef_repos": [
+                {
+                    "url": "https://git.linaro.org/ci/uefi.git/blob_plain/HEAD:/lava/kvm-host.yaml"
+                }],
+                "role": "host"
+            }
+        },
+        {
+            "command": "lava_command_run",
+            "parameters": {
+                "commands": [
+                    "dmesg|grep 'rtc-efi rtc-efi: setting system clock to'"
+                ],
+                "timeout": 300,
+                "role": "guest-nonsecure"
+            }
+        },
+        {
+            "command": "lava_command_run",
+            "parameters": {
+                "commands": [
+                    "dmesg|grep 'rtc-efi rtc-efi: setting system clock to'"
+                ],
+                "timeout": 300,
+                "role": "guest-secure"
+            }
+        },
+        {
+            "command": "lava_command_run",
+            "parameters": {
+                "commands": [
+                    "dmesg|grep 'rtc-efi rtc-efi: setting system clock to'"
+                ],
+                "timeout": 300,
+                "role": "guest-nonsecure-arm32"
+            }
+        },
+        {
+            "command": "lava_command_run",
+            "parameters": {
+                "commands": [
+                    "grep BOOT_IMAGE /proc/cmdline"
+                ],
+                "timeout": 300,
+                "role": "guest-grub-secure"
+            }
+        },
+        {
+            "command": "submit_results",
+            "parameters": {
+                "server": "http://${LAVA_SERVER}",
+                "stream": "${BUNDLE_STREAM_NAME}"
+            }
+        }
+    ]
+}

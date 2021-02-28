@@ -1,0 +1,113 @@
+- job:
+    name: tcwg-publish-snapshot
+    project-type: freestyle
+    defaults: global
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+                - job-extended-read
+            linaro:
+                - job-build
+                - job-cancel
+        - build-discarder:
+            days-to-keep: 30
+            num-to-keep: 30
+    parameters:
+        - string:
+                name: snapshot_version
+                default: ''
+                description: 'Snapshot revision to deploy (like: 5.2-2015.10, 5.2-2015.11-rc1)'
+        - string:
+                name: buildnum
+                default: ''
+                description: 'Build number to deploy, empty for latest'
+        - bool:
+               name: binaries
+               default: false
+               description: 'Publish binaries'
+        - string:
+                name: notes_branch
+                default: 'toolchain-snapshots'
+                description: 'Release notes branch name or sha1, e.g., releases/linaro-6.2-2016.11-rc2'
+        - bool:
+               name: notes_only
+               default: false
+               description: 'Publish release notes only'
+    disabled: false
+    node: tcwg-x86_64-dev-01
+    display-name: 'TCWG source or binaries tarball publishing on snapshot.linaro.org'
+    wrappers:
+        - timestamps
+    builders:
+        - linaro-publish-token
+        - shell: |
+            #!/bin/bash
+
+            set -ex
+
+            trap cleanup_exit INT TERM EXIT
+
+            cleanup_exit()
+            {
+              cd ${WORKSPACE}
+              rm -rf out
+            }
+
+            # Extract GCC version, and other needed mangling information
+            # Since GCC 5 our branch name only contains GCC major number.
+            gcc_version=${snapshot_version%%-*}
+            gcc_major=${gcc_version%%.*}
+            version_suffix=${snapshot_version##*-}
+
+            # Append suffix for snapshots
+            if [[ "$version_suffix" != rc* ]]; then
+              ldir="${snapshot_version}-snap"
+            else
+              ldir="${snapshot_version}"
+            fi
+
+            # Common parts
+            dest_dir="components/toolchain/"
+            cp_content="-r $HOME/releases/"
+
+            # Paths slightly differ between binaries and sources
+            if ${binaries}; then
+              dest_dir+="binaries"
+              notes_path="${dest_dir}"
+              # Append build number if provided, choose the latest otherwise
+              if test x"${buildnum}" != x; then
+                ldir+="-${buildnum}"
+              else
+                pushd $HOME/releases/binaries/
+                ldir=`ls -d ${ldir}* | tail -n 1`
+                popd
+              fi
+              cp_content+="binaries/${ldir}/*"
+            else
+              dest_dir+="gcc-linaro"
+              [ $gcc_major -ge 5 ] && gcc_version=$gcc_major
+              notes_path+="${dest_dir}/${gcc_version}"
+              cp_content+="sources/${ldir}/*"
+            fi
+
+            mkdir -p out
+
+            # Release notes
+            notes_url=https://git.linaro.org/toolchain/release-notes.git/plain/
+            wget ${notes_url}${notes_path}/README.textile?h=${notes_branch} -O out/README.textile
+
+            if ! ${notes_only}; then
+              cp ${cp_content} out/
+            fi
+
+            # Publish to snapshots
+            test -d ${HOME}/bin || mkdir ${HOME}/bin
+            wget https://git.linaro.org/ci/publishing-api.git/plain/linaro-cp.py -O ${HOME}/bin/linaro-cp.py
+            time python3 ${HOME}/bin/linaro-cp.py \
+              --api_version 3 \
+              out ${dest_dir}/${snapshot_version}/
+    publishers:
+        - email-ext:
+            recipients: 'bernhard.rosenkranzer@linaro.org, fathi.boudra@linaro.org, koen.kooi@linaro.org'
+            always: true

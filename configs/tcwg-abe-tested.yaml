@@ -1,0 +1,126 @@
+- scm:
+    name: abe
+    scm:
+        - git:
+            url: ssh://tcwg-buildslave@review.linaro.org:29418/toolchain/abe.git
+            # tcwg-buildslave user id
+            credentials-id: 'e0958a95-204f-4c14-a66c-5e2be6c5d50a'
+            name: gerrit
+            branches:
+                - refs/heads/master
+            basedir: abe
+            skip-tag: true
+            shallow-clone: false
+            wipe-workspace: false
+            clean:
+                before: true
+- scm:
+    name: jenkins-scripts
+    scm:
+        - git:
+            url: ssh://tcwg-buildslave@review.linaro.org:29418/toolchain/jenkins-scripts.git
+            # tcwg-buildslave user id
+            credentials-id: 'e0958a95-204f-4c14-a66c-5e2be6c5d50a'
+            name: gerrit
+            branches:
+                - refs/heads/master
+            basedir: jenkins-scripts
+            skip-tag: true
+            shallow-clone: false
+            wipe-workspace: false
+            clean:
+                before: true
+- scm:
+    name: dockerfiles
+    scm:
+        - git:
+            url: https://git.linaro.org/ci/dockerfiles.git
+            name: origin
+            branches:
+                - refs/heads/master
+            basedir: dockerfiles
+            skip-tag: true
+            shallow-clone: false
+            wipe-workspace: false
+            clean:
+                before: true
+- job:
+    name: tcwg-abe-tested
+    project-type: multijob
+    defaults: global
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+                - job-extended-read
+            linaro:
+                - job-build
+                - job-cancel
+        - build-discarder:
+            days-to-keep: 30
+            num-to-keep: 30
+        - build-blocker:
+            use-build-blocker: true
+            blocking-jobs:
+              - "ci-dockerfiles-deployment"
+            queue-scanning: 'ALL'
+        - throttle:
+            max-total: 1
+            option: project
+    parameters:
+        - bool:
+            name: no_tests_just_update_tested
+            default: 'false'
+            description: 'Do not run tests, and just update abe:tested'
+        - string:
+            name: distro
+            default: 'lts_1'
+            description: 'Distro image to use'
+    disabled: false
+    node: tcwg-coordinator
+    concurrent: true
+    display-name: 'TCWG BBB Update tested branches (ABE, jenkins-scripts, dockerfiles) after extended validation'
+    scm:
+        - abe
+        - jenkins-scripts
+        - dockerfiles
+    triggers:
+        # Daily
+        - pollscm:
+            cron: 'H H * * *'
+    wrappers:
+        - timeout:
+            timeout: 600
+        - timestamps
+        - ssh-agent-credentials:
+            # tcwg-buildslave user id
+            users:
+                - 'e0958a95-204f-4c14-a66c-5e2be6c5d50a'
+    builders:
+        - shell: |
+            #!/bin/bash
+            # Print out environment for debug purposes.
+            env | grep "^GIT"
+        - conditional-step:
+            condition-kind: strings-match
+            condition-string1: '${ENV,var="no_tests_just_update_tested"}'
+            condition-string2: 'false'
+            steps:
+              - multijob:
+                  name: 'ABE extended tests'
+                  condition: SUCCESSFUL
+                  projects:
+                    - name: tcwg-abe-extended
+                      predefined-parameters: |
+                        abe_branch=$GIT_COMMIT
+                        scripts_branch=$GIT_COMMIT_1
+                        distro=lts_1
+        - shell: |
+            #!/bin/bash
+
+            set -ex
+            ./jenkins-scripts/docker-run.sh --distro $distro -- ./jenkins-scripts/tcwg-update-tested.sh --GIT_COMMIT $GIT_COMMIT --GIT_COMMIT_1 $GIT_COMMIT_1 --GIT_COMMIT_2 $GIT_COMMIT_2 --verbose true
+    publishers:
+        - email-ext:
+            recipients: 'tcwg-validation@linaro.org'
+            aborted: true

@@ -1,0 +1,48 @@
+device_type: '$DEVICE_TYPE'
+job_name: '$JOB_NAME_SHORT $BUILD_DISPLAY_NAME'
+
+timeouts:
+  job:
+    minutes: 6
+  action:
+    minutes: 3
+  actions:
+    wait-usb-device:
+      seconds: 40
+
+priority: medium
+visibility: public
+
+actions:
+- deploy:
+    timeout:
+      minutes: 3
+    to: tmpfs
+    images:
+        zephyr:
+          url: '$IMAGE_URL'
+
+- boot:
+    method: pyocd
+    failure_retry: 3
+    timeout:
+      minutes: 3
+
+- test:
+    monitors:
+    - name: 'micropython_testsuite'
+      start: ''
+      end: 'status: [0-9]'
+      pattern: '(?P<test_case_id>[-_0-9a-z/.]+): (?P<result>(OK|FAILED|SKIPPED))'
+      fixupdict:
+        OK: pass
+        FAILED: fail
+        SKIPPED: skip
+
+metadata:
+  build-url: $BUILD_URL
+  build-log: ${BUILD_URL}consoleText
+  zephyr-toolchain-variant: $ZEPHYR_TOOLCHAIN_VARIANT
+  platform: $PLATFORM
+  git-url: $GIT_URL
+  git-commit: $GIT_COMMIT_ID

@@ -1,0 +1,55 @@
+- job:
+    name: lava-dispatcher-docker
+    project-type: freestyle
+    defaults: global
+    properties:
+        - authorization:
+            anonymous:
+                - job-discover
+            linaro:
+                - job-read
+                - job-extended-read
+                - job-build
+                - job-cancel
+        - build-discarder:
+            days-to-keep: 30
+            num-to-keep: 30
+    parameters:
+        - string:
+            name: REPOSITORY
+            default: 'production'
+    disabled: false
+    node: build-amd64
+    display-name: 'LAVA Dispatcher Production Docker images'
+    scm:
+        - git:
+            url: https://git.linaro.org/ci/dockerfiles.git
+            refspec: +refs/heads/master:refs/remotes/origin/master
+            name: origin
+            branches:
+                - refs/heads/master
+            skip-tag: true
+            shallow-clone: true
+    triggers:
+        - pollurl:
+            cron: '@daily'
+            urls:
+              - url: 'http://images.validation.linaro.org/production-repo/services-trace.txt'
+                check-content:
+                - simple: true
+    wrappers:
+        - timestamps
+        - copy-to-slave:
+            includes:
+                - config.json
+            relative-to: 'somewhereElse'
+        - credentials-binding:
+            - text:
+                credential-id: DOCKER_AUTH
+                variable: DOCKER_AUTH
+    builders:
+        - shell:
+            !include-raw: lava-dispatcher-docker/builders.sh
+    publishers:
+        - email:
+            recipients: 'senthil.kumaran@linaro.org riku.voipio@linaro.org fathi.boudra@linaro.org'

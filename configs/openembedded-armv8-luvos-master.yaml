@@ -1,0 +1,77 @@
+- job:
+    name: openembedded-armv8-luvos-master
+    project-type: freestyle
+    defaults: global
+    logrotate:
+        daysToKeep: 30
+        numToKeep: 30
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+                - job-extended-read
+                - job-workspace
+            linaro:
+                - job-read
+                - job-extended-read
+                - job-build
+                - job-cancel
+    parameters:
+        - string:
+            name: MACHINE
+            default: 'qemuarm64'
+        - string:
+            name: DISTRO
+            default: 'luv'
+        - string:
+            name: BRANCH
+            default: 'master'
+        - string:
+            name: IMAGE
+            default: 'luv-live-image'
+    disabled: false
+    node: build
+    display-name: 'Linux UEFI Validation Operating System (luvOS) for ARMv8 - master'
+    scm:
+        - git:
+            url: https://github.com/01org/luv-yocto.git
+            refspec: +refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}
+            name: origin
+            branches:
+                - refs/heads/${BRANCH}
+            skip-tag: true
+            shallow-clone: true
+            wipe-workspace: false
+    wrappers:
+        - timestamps
+        - build-name:
+            name: '#${BUILD_NUMBER}-${GIT_REVISION,length=8}'
+    builders:
+        - linaro-publish-token
+        - shell:
+            !include-raw: openembedded-armv8-luvos/builders.sh
+        - shell:  |
+            #!/bin/bash -e
+
+            rm -rf configs
+            git clone --depth 1 http://git.linaro.org/ci/job/configs.git
+
+            sed -e "s|\${BUILD_NUMBER}|${BUILD_NUMBER}|" \
+                -e "s|\${BUILD_URL}|${BUILD_URL}|" \
+                -e "s|\${BRANCH}|${BRANCH}|" \
+                -e "s|\${GIT_COMMIT}|${GIT_COMMIT}|" \
+                < configs/openembedded-armv8-luvos/lava-job-definitions/qemu/template.yaml \
+                > custom_lava_job_definition.yaml
+
+            cat << EOF > post_build_lava_parameters
+            DEVICE_TYPE=qemu
+            CUSTOM_YAML_URL=${JOB_URL}/ws/custom_lava_job_definition.yaml
+            LAVA_SERVER=validation.linaro.org/RPC2/
+            EOF
+        - trigger-builds:
+            - project: 'post-build-lava'
+              property-file: post_build_lava_parameters
+              block: true
+    publishers:
+        - email:
+            recipients: 'fathi.boudra@linaro.org naresh.bhat@linaro.org milosz.wasilewski@linaro.org'

@@ -1,0 +1,109 @@
+- job:
+    name: trigger-ci-job-configs
+    project-type: freestyle
+    defaults: global
+    properties:
+        - authorization:
+            anonymous:
+                - job-discover
+            linaro:
+                - job-read
+                - job-extended-read
+        - build-discarder:
+            days-to-keep: 30
+            num-to-keep: 200
+    disabled: false
+    node: triggers
+    display-name: 'CI job configs deployment'
+    scm:
+        - git:
+            url: https://review.linaro.org/${GERRIT_PROJECT}
+            refspec: ${GERRIT_REFSPEC}
+            branches:
+                - ${GERRIT_BRANCH}
+            skip-tag: true
+            clean:
+                before: true
+            choosing-strategy: gerrit
+            basedir: configs
+    triggers:
+        - gerrit:
+            server-name: 'review.linaro.org'
+            trigger-on:
+                - change-merged-event
+            projects:
+                - project-compare-type: 'PLAIN'
+                  project-pattern: 'ci/job/configs'
+                  branches:
+                    - branch-pattern: 'master'
+            silent-start: true
+    wrappers:
+        - timestamps
+        - credentials-binding:
+            - text:
+                credential-id: JJB_USER
+                variable: JJB_USER
+        - credentials-binding:
+            - text:
+                credential-id: JJB_PASSWORD
+                variable: JJB_PASSWORD
+        - credentials-binding:
+            - text:
+                credential-id: LAVA_USER
+                variable: LAVA_USER
+        - credentials-binding:
+            - text:
+                credential-id: LAVA_TOKEN
+                variable: LAVA_TOKEN
+        - credentials-binding:
+            - text:
+                credential-id: LT_QCOM_KEY
+                variable: LT_QCOM_KEY
+        - credentials-binding:
+            - text:
+                credential-id: AUTH_TOKEN
+                variable: AUTH_TOKEN
+        - credentials-binding:
+            - text:
+                credential-id: SQUAD_AUTH_TOKEN
+                variable: SQUAD_AUTH_TOKEN
+    builders:
+        - shell: |
+            #!/bin/bash -e
+            echo "#${BUILD_NUMBER}-${GERRIT_PATCHSET_REVISION:0:8}" > ${WORKSPACE}/version.txt
+        - build-name-setter:
+            name: 'version.txt'
+            file: true
+        - shell: |
+            #!/bin/bash
+
+            set -e
+
+            echo ""
+            echo "########################################################################"
+            echo "    Gerrit Environment"
+            env |grep '^GERRIT'
+            echo "########################################################################"
+            cd configs/
+
+            export GIT_PREVIOUS_COMMIT=$(git rev-parse HEAD~1)
+            export GIT_COMMIT=${GERRIT_PATCHSET_REVISION}
+
+            set +e
+            KERNEL_TEST_CONFIG=$(git show --pretty="format:" --name-only | grep "kernel-testing-configs/test-params")
+            set -e
+            if [ ! -z ${KERNEL_TEST_CONFIG} ];then
+              source ${KERNEL_TEST_CONFIG}
+              export KERNEL_BRANCH KERNEL_REPO DUT EMAIL_ADDRESS
+              cd kernel-testing-configs
+              ./generate-jjb-configs.sh
+              export GIT_PREVIOUS_COMMIT=$(git rev-parse HEAD~1)
+              export GIT_COMMIT=$(git rev-parse HEAD)
+              cd ../
+            fi
+
+            jenkins-jobs --version
+            python run-jjb.py
+    publishers:
+        - email:
+            recipients: 'linaro-infrastructure-errors@lists.linaro.org'
