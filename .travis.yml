@@ -9,4 +9,6 @@ services:
   - docker
 arch:
   - arm64
-script: ls
+script: 
+  - ls
+  - ./build.sh --build-type tensorflow --tf_version 1
