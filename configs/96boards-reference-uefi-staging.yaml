@@ -1,0 +1,79 @@
+- job:
+    name: 96boards-reference-uefi-staging
+    project-type: matrix
+    defaults: global
+    logrotate:
+        daysToKeep: 30
+        numToKeep: 30
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+                - job-extended-read
+                - job-workspace
+            linaro:
+                - job-read
+                - job-extended-read
+                - job-build
+                - job-cancel
+    parameters:
+        - string:
+            name: EDK2_VERSION
+            default: 'origin/release-prep'
+        - string:
+            name: ATF_VERSION
+            default: 'v1.5'
+        - string:
+            name: OPTEE_VERSION
+            default: '3.0.0'
+    disabled: false
+    node: master
+    child-workspace: .
+    display-name: 'Reference Platform - UEFI (staging)'
+    axes:
+        - axis:
+            type: user-defined
+            name: MX_PLATFORM
+            values:
+                - hikey
+                - hikey960
+        - axis:
+            type: user-defined
+            name: MX_TYPE
+            values:
+                - RELEASE
+                - DEBUG
+        - axis:
+            type: slave
+            name: label
+            values:
+                - docker-stretch-amd64
+    execution-strategy:
+        sequential: false
+    wrapper:
+        - timestamps
+        - build-name:
+            name: '#${BUILD_NUMBER}-${GIT_REVISION,length=8}'
+        - matrix-tie-parent:
+            node: master
+    builders:
+        - shell:
+            !include-raw: rpb-uefi/staging/builders.sh
+        - linaro-publish-token
+        - shell: |
+            #!/bin/bash
+
+            # Publish
+            test -d ${HOME}/bin || mkdir ${HOME}/bin
+            wget https://git.linaro.org/ci/publishing-api.git/blob_plain/HEAD:/linaro-cp.py -O ${HOME}/bin/linaro-cp.py
+            time python3 ${HOME}/bin/linaro-cp.py \
+              --server ${PUBLISH_SERVER} \
+              out/${BUILD_TYPE} reference-platform/components/uefi-staging/${BUILD_NUMBER}/${BUILD_TYPE}/${MX_PLATFORM}/
+            python3 ${HOME}/bin/linaro-cp.py \
+              --server ${PUBLISH_SERVER} \
+              --make-link reference-platform/components/uefi-staging/${BUILD_NUMBER}
+    publishers:
+        - email-ext:
+            recipients: 'fathi.boudra@linaro.org, qa-team@linaro.org'
+            always: true
+            matrix-trigger: only-parent

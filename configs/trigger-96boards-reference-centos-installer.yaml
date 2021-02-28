@@ -1,0 +1,27 @@
+- job:
+    name: trigger-96boards-reference-centos-installer
+    project-type: freestyle
+    defaults: global
+    logrotate:
+        daysToKeep: 30
+        numToKeep: 30
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+    disabled: true
+    node: triggers
+    display-name: 'Trigger for Reference Platform - CentOS Installer'
+    triggers:
+        - pollurl:
+            cron: '@hourly'
+            polling-node: build
+            urls:
+              - url: 'http://repo.linaro.org/rpm/linaro-overlay/centos-7/repo/'
+                check-content:
+                  - simple: true
+    wrappers:
+        - timestamps
+    builders:
+        - trigger-builds:
+            - project: '96boards-reference-centos-installer'

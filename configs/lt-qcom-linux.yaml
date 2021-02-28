@@ -1,0 +1,96 @@
+- job:
+    name: lt-qcom-linux
+    project-type: matrix
+    defaults: global
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+                - job-extended-read
+                - job-workspace
+            linaro-landing-team-qualcomm-personnel:
+                - job-build
+                - job-cancel
+        - build-discarder:
+            days-to-keep: 30
+            num-to-keep: 30
+            artifact-num-to-keep: 1
+    parameters:
+        - string:
+            name: KERNEL_REPO_URL
+            default: 'https://git.linaro.org/landing-teams/working/qualcomm/kernel.git'
+        - string:
+            name: KERNEL_CONFIGS_arm64
+            default: 'defconfig distro.config'
+        - string:
+            name: KERNEL_CONFIGS_arm
+            default: 'multi_v7_defconfig distro.config'
+        - string:
+            name: KERNEL_BUILD_TARGET
+            default: 'deb-pkg'
+        - string:
+            name: KERNEL_DESCRIBE
+        - string:
+            name: KERNEL_VERSION
+        - string:
+            name: KERNEL_BRANCH
+        - string:
+            name: TARGET_REPO
+            default: 'linaro-overlay-sid'
+        - string:
+            name: KDEB_CHANGELOG_DIST
+            default: 'sid'
+        - string:
+            name: UPDATE_DEFCONFIG
+            default: 'True'
+    axes:
+        - axis:
+            type: user-defined
+            name: ARCH
+            values:
+                - arm
+                - arm64
+        - axis:
+            type: slave
+            name: label
+            values:
+                - docker-stretch-amd64
+    execution-strategy:
+        sequential: false
+    disabled: false
+    node: master
+    display-name: 'Qualcomm LT Dragonboard Linux kernel build'
+    scm:
+        - git:
+            url: ${KERNEL_REPO_URL}
+            refspec: +refs/heads/${KERNEL_BRANCH}:refs/remotes/origin/${KERNEL_BRANCH}
+            name: origin
+            branches:
+                - refs/heads/${KERNEL_BRANCH}
+            basedir: linux
+            skip-tag: true
+            shallow-clone: true
+            wipe-workspace: false
+    wrappers:
+        - timestamps
+        - build-name:
+            name: '#${BUILD_NUMBER}-${GIT_REVISION,length=8}'
+    builders:
+        - shell:
+            !include-raw: lt-qcom-linux/builders-deps.sh
+        - shell:
+            !include-raw: lt-qcom/install-gcc-toolchain.sh
+        - inject:
+            properties-file: gcc_toolchain_env
+        - shell:
+            !include-raw: lt-qcom-linux/builders.sh
+        - trigger-builds:
+            - project: 'build-package-obs'
+              property-file: params
+              block: true
+    publishers:
+        - email-ext:
+            recipients: 'nicolas.dechesne@linaro.org anibal.limon@linaro.org'
+            failure: true
+            still-failing: true
+            matrix-trigger: only-parent

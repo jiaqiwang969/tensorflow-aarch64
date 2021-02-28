@@ -1,0 +1,84 @@
+- job:
+    name: lava-lab-sanity-check
+    project-type: freestyle
+    defaults: global
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+                - job-extended-read
+        - build-discarder:
+            days-to-keep: 30
+            num-to-keep: 30
+    disabled: false
+    node: build
+    display-name: 'LAVA lab sanity check'
+    scm:
+        - git:
+            url: https://review.linaro.org/${GERRIT_PROJECT}
+            refspec: ${GERRIT_REFSPEC}
+            branches:
+                - ${GERRIT_BRANCH}
+            skip-tag: true
+            clean:
+                before: true
+            choosing-strategy: gerrit
+            basedir: lava-lab
+    triggers:
+        - gerrit:
+            server-name: 'review.linaro.org'
+            override-votes: true
+            gerrit-build-successful-codereview-value: 1
+            gerrit-build-failed-codereview-value: -1
+            readable-message: true
+            successful-message: 'Sanity Check Successful'
+            start-message: 'Sanity Check Started'
+            # failure-message: 'Sanity Check Failed'
+            failure-message-file: selfcheck.log
+            trigger-for-unreviewed-patches: true
+            projects:
+                - project-compare-type: 'PLAIN'
+                  project-pattern: 'lava/lava-lab'
+                  branches:
+                    - branch-compare-type: 'PLAIN'
+                      branch-pattern: 'master'
+    wrappers:
+        - timestamps
+    builders:
+        - shell: |
+            #!/bin/bash -e
+            echo "#${BUILD_NUMBER}-${GERRIT_PATCHSET_REVISION:0:8}" > ${WORKSPACE}/version.txt
+        - build-name-setter:
+            name: 'version.txt'
+            file: true
+        - shell: |
+            #!/bin/bash
+
+            set -e
+
+            rm ${WORKSPACE}/selfcheck.log | true
+            echo ""
+            echo "########################################################################"
+            echo "    Gerrit Environment"
+            env |grep '^GERRIT'
+            echo "########################################################################"
+
+            cd lava-lab/
+            ./test-all.sh | tee ${WORKSPACE}/selfcheck.log
+
+            exit_code=0
+            # check for health check errors
+            if (grep invalid ${WORKSPACE}/selfcheck.log); then
+                exit_code=1
+                echo "Health checks failed"
+            fi
+
+            # check for device dict errors
+            if (grep -v environment ${WORKSPACE}/selfcheck.log | grep ERROR); then
+                exit_code=1
+                echo "Device dicts failed"
+            fi
+            exit ${exit_code}
+        - build-name-setter:
+            name: 'version.txt'
+            file: true

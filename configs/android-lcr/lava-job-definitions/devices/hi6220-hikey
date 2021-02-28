@@ -1,0 +1,24 @@
+{% extends "lcr.jinja2" %}
+
+{% block device_type %}hi6220-hikey-r2{% endblock %}
+
+{% block secrets %}
+  {{ super() }}
+  AP_SSID: "{{AP_SSID}}"
+  AP_KEY: "{{AP_KEY}}"
+{% endblock %}
+
+{% block deploy_target %}
+{% if ANDROID_VERSION_SUFFIX is defined %}
+{% include "devices/hi6220-hikey-deploy-" + ANDROID_VERSION_SUFFIX %}
+{% else %}
+{% include "devices/hi6220-hikey-deploy" %}
+{% endif %}
+{% endblock deploy_target %}
+
+{% block boot_target %}
+{% include "devices/hi6220-hikey-boot" %}
+{% endblock boot_target %}
+
+{% block test_target %}
+{% endblock test_target %}

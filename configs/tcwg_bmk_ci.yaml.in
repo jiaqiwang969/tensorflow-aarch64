@@ -1,0 +1,214 @@
+- project:
+    name: tcwg_bmk_ci_#{TOOLCHAIN}
+    binutils_url: git://sourceware.org/git/binutils-gdb.git
+    gcc_url: https://github.com/gcc-mirror/gcc.git
+#if TOOLCHAIN_gnu_eabi
+    newlib_url: git://sourceware.org/git/newlib-cygwin.git
+#else
+    glibc_url: git://sourceware.org/git/glibc.git
+#endif
+#if TOOLCHAIN_llvm
+    llvm_url: https://github.com/llvm/llvm-project.git
+#endif
+    hw:
+#if TOOLCHAIN_gnu_eabi
+      - stm32:
+          target: arm_eabi
+          node: tcwg-x86_64-dev-02
+#else
+      - tk1:
+          target: arm
+          node: tcwg-x86_64-build_bmk_tk1
+      - tx1:
+          target: aarch64
+          node: tcwg-x86_64-build_bmk_tx1
+#endif
+    toolchain_name: #{TOOLCHAIN}
+    components: #{COMPONENTS}
+    toolchain_ver:
+      - master:
+          binutils_branch: master
+          gcc_branch: master
+#if !TOOLCHAIN_gnu_eabi
+          glibc_branch: master
+#endif
+#if TOOLCHAIN_llvm
+          llvm_branch: main
+#endif
+#if TOOLCHAIN_gnu_eabi
+          newlib_branch: master
+#endif
+          distro: lts
+      - release:
+          binutils_branch: binutils-2_35-branch
+          gcc_branch: releases/gcc-10
+#if !TOOLCHAIN_gnu_eabi
+          glibc_branch: release/2.32/master
+#endif
+#if TOOLCHAIN_llvm
+          llvm_branch: release/11.x
+#endif
+#if TOOLCHAIN_gnu_eabi
+          newlib_branch: newlib-3.3.0
+#endif
+          distro: lts_1
+    bmk:
+#if TOOLCHAIN_gnu_eabi
+      - coremark
+#else
+      - spec2k6
+#endif
+    cflags:
+      - Os:
+          cron_schedule: H H H/7 * *
+      - Os_LTO:
+          cron_schedule: H H H/7 * *
+      - Oz:
+          cron_schedule: H H H/7 * *
+      - Oz_LTO:
+          cron_schedule: H H H/7 * *
+      - O2:
+          cron_schedule: H H H/7 * *
+      - O2_LTO:
+          cron_schedule: H H H/7 * *
+      - O3:
+          cron_schedule: H H H/7 * *
+      - O3_LTO:
+          cron_schedule: H H H/7 * *
+      - Os-vs-Os_LTO:
+          cron_schedule: H H H * *
+      - O2-vs-O2_LTO:
+          cron_schedule: H H H * *
+      - O3-vs-O3_LTO:
+          cron_schedule: H H H * *
+    jobs:
+      - 'tcwg_bmk_ci_#{TOOLCHAIN}-build-tcwg_bmk_{hw}-#{TOOLCHAIN}-{toolchain_ver}-{target}-{bmk}-{cflags}'
+      - 'tcwg_bmk_ci_#{TOOLCHAIN}-bisect-tcwg_bmk_{hw}-#{TOOLCHAIN}-{toolchain_ver}-{target}-{bmk}-{cflags}'
+    exclude:
+      - toolchain_name: gnu
+        cflags: Oz
+      - toolchain_name: gnu
+        cflags: Oz_LTO
+      - toolchain_name: gnu_eabi
+        cflags: Oz
+      - toolchain_name: gnu_eabi
+        cflags: Oz_LTO
+      - toolchain_name: llvm
+        cflags: Os-vs-Os_LTO
+      - toolchain_name: llvm
+        cflags: O2-vs-O2_LTO
+      - toolchain_name: llvm
+        cflags: O3-vs-O3_LTO
+
+- view:
+    name: tcwg_bmk_ci_#{TOOLCHAIN}
+    view-type: list
+    regex: 'tcwg_bmk_ci_#{TOOLCHAIN}-.*'
+
+#include tcwg/round-robin.yaml.inc
+
+- job-template:
+    name: tcwg_bmk_ci_#{TOOLCHAIN}-build-tcwg_bmk_{hw}-#{TOOLCHAIN}-{toolchain_ver}-{target}-{bmk}-{cflags}
+    project-type: freestyle
+    defaults: global
+    properties:
+      - default-properties
+      - build-blocker:
+          blocking-jobs:
+            - "tcwg_bmk_dev_.*-tcwg_bmk_{hw}"
+            - "tcwg_bmk_ci_#{TOOLCHAIN}-bisect-tcwg_bmk_{hw}-#{TOOLCHAIN}-{toolchain_ver}-{target}-{bmk}-{cflags}"
+          queue-scanning: 'ALL'
+    parameters:
+      - build-parameters:
+          ci_project: 'tcwg_bmk_{hw}'
+          ci_config: '#{TOOLCHAIN}-{toolchain_ver}-{target}-{bmk}-{cflags}'
+          binutils_url: '{binutils_url}'
+          gcc_url: '{gcc_url}'
+#if !TOOLCHAIN_gnu_eabi
+          glibc_url: '{glibc_url}'
+#endif
+#if TOOLCHAIN_llvm
+          llvm_url: '{llvm_url}'
+#endif
+#if TOOLCHAIN_gnu_eabi
+          newlib_url: '{newlib_url}'
+#endif
+          default_branch: default
+          distro: '{distro}'
+    disabled: false
+    node: '{node}'
+    concurrent: false
+    display-name: 'TCWG Build tcwg_bmk_{hw}/#{TOOLCHAIN}-{toolchain_ver}-{target}-{bmk}-{cflags}'
+    workspace: workspace/tcwg_bmk_$EXECUTOR_NUMBER
+    scm:
+      - build-scms:
+          binutils_url: '{binutils_url}'
+          binutils_branch: '{binutils_branch}'
+          gcc_url: '{gcc_url}'
+          gcc_branch: '{gcc_branch}'
+#if !TOOLCHAIN_gnu_eabi
+          glibc_url: '{glibc_url}'
+          glibc_branch: '{glibc_branch}'
+#endif
+#if TOOLCHAIN_llvm
+          llvm_url: '{llvm_url}'
+          llvm_branch: '{llvm_branch}'
+#endif
+#if TOOLCHAIN_gnu_eabi
+          newlib_url: '{newlib_url}'
+          newlib_branch: '{newlib_branch}'
+#endif
+    triggers:
+      - pollscm:
+          cron: '{cron_schedule}'
+    wrappers:
+      - build-wrappers:
+          timeout: 600
+    builders:
+      - run-build:
+          build_script: 'tcwg_bmk-build.sh'
+          components: '{components}'
+          rr_project: 'tcwg_bmk_ci_#{TOOLCHAIN}'
+          ci_project_config: 'tcwg_bmk_{hw}-#{TOOLCHAIN}-{toolchain_ver}-{target}-{bmk}-{cflags}'
+    publishers:
+        - build-publishers
+
+- job-template:
+    name: tcwg_bmk_ci_#{TOOLCHAIN}-bisect-tcwg_bmk_{hw}-#{TOOLCHAIN}-{toolchain_ver}-{target}-{bmk}-{cflags}
+    project-type: freestyle
+    defaults: global
+    properties:
+      - default-properties
+      - build-blocker:
+          # Run at most 1 bisect job for all configurations.
+          # Bisect jobs can easily run for 5+ hours, and a few of them
+          # can hog the entire TCWG build farm for a long time.  Since
+          # same regression tends to appear in multiple configurations,
+          # run bisections for all configurations in-order.
+          blocking-jobs:
+            - "tcwg_bmk_dev_.*-tcwg_bmk_{hw}"
+            - "tcwg_bmk_ci_.*-bisect-tcwg_bmk_{hw}-.*"
+          queue-scanning: 'BUILDABLE'
+    parameters:
+      - bisect-parameters:
+          ci_project: 'tcwg_bmk_{hw}'
+          ci_config: '#{TOOLCHAIN}-{toolchain_ver}-{target}-{bmk}-{cflags}'
+          distro: '{distro}'
+    disabled: false
+    node: '{node}'
+    concurrent: false
+    display-name: 'TCWG Bisect tcwg_bmk_{hw}/#{TOOLCHAIN}-{toolchain_ver}-{target}-{bmk}-{cflags}'
+    workspace: workspace/tcwg_bmk_$EXECUTOR_NUMBER
+    scm:
+      - jenkins-scripts
+      - bmk-scripts
+    wrappers:
+      - bisect-wrappers:
+          timeout: 2880
+    builders:
+      - run-bisect:
+          build_script: 'tcwg_bmk-build.sh'
+          rr_project: 'tcwg_bmk_ci_#{TOOLCHAIN}'
+          ci_project_config: 'tcwg_bmk_{hw}-#{TOOLCHAIN}-{toolchain_ver}-{target}-{bmk}-{cflags}'
+    publishers:
+        - bisect-publishers

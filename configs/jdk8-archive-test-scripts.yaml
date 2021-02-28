@@ -1,0 +1,35 @@
+- job:
+    name: jdk8-archive-test-scripts
+    project-type: freestyle
+    defaults: global
+    description: |
+        * This job is no longer necessary as these directories are held at git.linaro.org.
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+                - job-extended-read
+        - build-discarder:
+            days-to-keep: 30
+            num-to-keep: 10
+            artifact-num-to-keep: 5
+    disabled: true
+    node: j12-qrep-01
+    display-name: 'OpenJDK 8 - Archive OpenJDK 8 test scripts'
+    wrappers:
+        - timestamps
+    builders:
+        - shell: |
+            #!/bin/bash
+
+            set -exu
+
+            rm -rf out
+            mkdir out
+            cd ~openjdk-testing
+            tar --exclude=.git -acvf ${WORKSPACE}/out/specjbb-test-scripts.tar.gz specjbb-test-scripts 
+            tar --exclude=.git --exclude=jdk8 -acvf ${WORKSPACE}/out/openjdk-test-scripts.tar.gz openjdk-test-scripts
+            tar --exclude=.git -acvf ${WORKSPACE}/out/hadoop-test-scripts.tar.gz  hadoop-test-scripts
+    publishers:
+        - archive:
+            artifacts: 'out/*.tar.gz'

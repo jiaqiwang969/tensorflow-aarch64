@@ -1,0 +1,43 @@
+- job:
+    name: trigger-armnn-ci-build
+    project-type: freestyle
+    defaults: global
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+        - build-discarder:
+            days-to-keep: 30
+            num-to-keep: 30
+    disabled: false
+    node: triggers
+    display-name: 'Trigger for armnn-ci-build'
+    scm:
+        - git:
+            url: https://git.mlplatform.org/ml/armnn.git
+            refspec: +refs/heads/master:refs/remotes/origin/master
+            name: origin
+            branches:
+                - refs/heads/master
+            submodule:
+                recursive: true
+    triggers:
+        - pollscm:
+            cron: 'H/5 * * * *'
+    wrappers:
+        - timestamps
+        - build-name:
+            name: '#${BUILD_NUMBER}-${GIT_REVISION,length=8}'
+    builders:
+        - shell: |
+            #!/bin/bash -e
+            git clean -fdx
+            echo GIT_COM_ID=${GIT_COMMIT} >> armnn_ci_parameters
+            cat armnn_ci_parameters
+    publishers:
+        - trigger-parameterized-builds:
+            - project: 'armnn-ci-build'
+              property-file: armnn_ci_parameters
+            - project: 'armnn32-ci-build'
+              property-file: armnn_ci_parameters
+

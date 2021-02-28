@@ -1,0 +1,56 @@
+{% extends "template-lkft.yaml" %}
+
+{% block device_type %}dragonboard-845c{% endblock %}
+
+{% block deploy_target %}
+- deploy:
+    timeout:
+      minutes: 15
+    to: fastboot
+    namespace: target
+    connection: lxc
+    images:
+      "partition:0":
+        url: "https://images.validation.linaro.org/snapshots.linaro.org/96boards/dragonboard845c/linaro/rescue/28/dragonboard-845c-bootloader-ufs-aosp-28/gpt_both0.bin"
+      boot:
+        url: {{DOWNLOAD_URL}}/boot.img.xz
+        compression: xz
+      userdata:
+        url: {{REFERENCE_BUILD_URL}}/userdata.img.xz
+        compression: xz
+      super:
+        url: {{REFERENCE_BUILD_URL}}/super.img.xz
+        compression: xz
+{% if IMAGE_SUPPORTED_CACHE is defined %}
+      cache:
+        url: {{REFERENCE_BUILD_URL}}/cache.img.xz
+        compression: xz
+{% endif %}
+    protocols:
+      lava-lxc:
+      - action: fastboot-deploy
+        request: pre-power-command
+        timeout:
+          minutes: 2
+{% endblock deploy_target %}
+
+{% block boot_target %}
+- boot:
+    namespace: target
+    prompts:
+    - 'root@(.*):/#'
+    - 'console:/'
+    timeout:
+      minutes: 15
+    method: fastboot
+    commands:
+    - oem select-display-panel hdmi
+    - reboot bootloader
+    - oem select-display-panel hdmi
+    - reboot bootloader
+    - oem select-display-panel hdmi
+    - reboot
+{% endblock boot_target %}
+
+{% block test_target %}
+{% endblock test_target %}

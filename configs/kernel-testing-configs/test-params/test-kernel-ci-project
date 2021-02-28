@@ -1,0 +1,4 @@
+KERNEL_BRANCH=android-hikey-linaro-4.19
+KERNEL_REPO=https://android.googlesource.com/kernel/hikey-linaro
+DUT=hikey
+EMAIL_ADDRESS=vishal.bhoj@linaro.org

@@ -1,0 +1,64 @@
+- job:
+    name: android-master-clang
+    project-type: freestyle
+    defaults: global
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+                - job-extended-read
+            linaro:
+                - job-build
+                - job-cancel
+        - build-discarder:
+            days-to-keep: 60
+            num-to-keep: 60
+    parameters:
+        - string:
+            name: CLANG_TOOLCHAIN_URL
+            default: ''
+    disabled: false
+    node: docker-xenial-aosp
+    display-name: 'AOSP Master built with upstream Clang toolchain'
+    wrappers:
+        - timestamps
+        - timeout:
+            timeout: 500
+    builders:
+        - shell:
+            !include-raw: android-master-clang/builders.sh
+        - shell: |
+            #!/bin/bash
+
+            # Publish parameters
+            cat << EOF > ${WORKSPACE}/publish_parameters
+            PUB_SRC=${HOME}/workspace/${JOB_NAME}/build/out
+            PUB_DEST=/android/${JOB_NAME}/${BUILD_NUMBER}
+            EOF
+        - inject:
+            properties-file: publish_parameters
+        - linaro-publish-token
+        - shell:
+            !include-raw:
+                - android/linaro-publisher.sh
+        - trigger-builds:
+            - project: 'post-build-lava'
+              property-file: post_build_lava_parameters
+              block: true
+    publishers:
+        - email-ext:
+            recipients: 'bernhard.rosenkranzer@linaro.org,vishal.bhoj@linaro.org,daniel.diaz@linaro.org'
+            content-type: text
+            body: |
+                Build URL: ${PROJECT_URL}${BUILD_NUMBER}/
+                Full log: ${PROJECT_URL}${BUILD_NUMBER}/consoleText
+                Parsed warnings/errors: ${PROJECT_URL}${BUILD_NUMBER}/parsed_console
+
+                Errors:
+                ${BUILD_LOG_REGEX, regex=".*ERROR:.* ", linesBefore=0, linesAfter=0, showTruncatedLines=false}
+        - logparser:
+            parse-rules: '/var/jenkins_home/userContent/android.parse'
+            unstable-on-warning: false
+            fail-on-error: false
+        - fingerprint:
+            files: 'build/fingerprints/*'

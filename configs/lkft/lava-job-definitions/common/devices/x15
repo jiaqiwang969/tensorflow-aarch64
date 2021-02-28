@@ -1,0 +1,41 @@
+{% extends "template-lkft.yaml" %}
+
+{% block device_type %}x15{% endblock %}
+
+{% block deploy_target %}
+- deploy:
+    timeout:
+      minutes: 25
+    to: fastboot
+    namespace: target
+    connection: lxc
+    images:
+      boot_a:
+        url: {{DOWNLOAD_URL}}/boot.img.xz
+        compression: xz
+      boot_b:
+        url: {{DOWNLOAD_URL}}/boot.img.xz
+        compression: xz
+      vbmeta_a:
+        url: {{DOWNLOAD_URL}}/vbmeta.img.xz
+        compression: xz
+      vbmeta_b:
+        url: {{DOWNLOAD_URL}}/vbmeta.img.xz
+        compression: xz
+      userdata:
+        url: {{DOWNLOAD_URL}}/userdata.img.xz
+        compression: xz
+      super:
+        url: {{DOWNLOAD_URL}}/super.img.xz
+        compression: xz
+      recovery:
+        url: {{DOWNLOAD_URL}}/recovery.img.xz
+        compression: xz
+{% endblock deploy_target %}
+
+{% block boot_target %}
+{% include "devices/x15-boot" %}
+{% endblock boot_target %}
+
+{% block test_target %}
+{% endblock test_target %}

@@ -1,0 +1,75 @@
+- scm:
+    name: repo-manifest
+    scm:
+        - repo:
+            manifest-url: https://git.linaro.org/landing-teams/working/qualcomm/configs.git
+            manifest-branch: repo
+            manifest-file: automerge-ci.xml
+
+- scm:
+    name: rrcache
+    scm:
+        - git:
+            url:  https://git.linaro.org/landing-teams/working/qualcomm/automerge-rrcache.git
+            refspec: +refs/heads/*:refs/remotes/origin/*
+            name: origin
+            basedir: rrcache
+            branches:
+                - refs/heads/master
+            skip-tag: true
+            shallow-clone: false
+            wipe-workspace: false
+
+- scm:
+    name: linux-tag
+    scm:
+        - git:
+            url: git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
+            refspec: +refs/tags/*:refs/remotes/origin/tags/*
+            name: origin
+            basedir: linus
+            branches:
+                - refs/tags/v4.*
+                - refs/tags/v5.*
+            skip-tag: true
+            shallow-clone: false
+            wipe-workspace: false
+
+- job:
+    name: trigger-lt-qcom-linux-automerge
+    project-type: freestyle
+    defaults: global
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+                - job-extended-read
+                - job-workspace
+            linaro-landing-team-qualcomm-personnel:
+                - job-read
+                - job-extended-read
+                - job-build
+                - job-cancel
+        - build-discarder:
+            days-to-keep: 30
+            num-to-keep: 30
+    disabled: false
+    node: triggers
+    display-name: 'Trigger for Qualcomm LT Integration Tree Automerge'
+    scm:
+        - repo-manifest
+        - rrcache
+        - linux-tag
+    triggers:
+        - pollscm:
+            cron: 'H/5 * * * *'
+    wrappers:
+        - timestamps
+    builders:
+        - trigger-builds:
+            - project: 'lt-qcom-linux-automerge'
+    publishers:
+        - email-ext:
+            recipients: 'anibal.limon@linaro.org nicolas.dechesne@linaro.org'
+            failure: true
+            still-failing: true

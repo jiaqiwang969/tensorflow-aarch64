@@ -1,0 +1,74 @@
+- job:
+    name: tcwg-upstream2gerrit
+    project-type: freestyle
+    defaults: global
+    description: |
+      This job tracks gcc-patches@ mailing list and tests
+      interesting patches.
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+                - job-extended-read
+            linaro:
+                - job-build
+                - job-cancel
+        - build-discarder:
+            days-to-keep: 30
+            num-to-keep: 30
+    parameters:
+        - string:
+            name: branch
+            default: 'master'
+            description: 'Project branch to apply patch to'
+        - string:
+            name: patches
+            default: 'last'
+            description: 'List of patchworks patch ids (numbers); special values: last'
+        - string:
+            name: project
+            default: 'gcc'
+            description: 'GCC branch to apply patch to'
+        - bool:
+            name: squash
+            default: 'false'
+            description: 'Whether to squash all patches into one commit/review'
+        - bool:
+            name: filter
+            default: 'false'
+            description: 'Use internal filter to decide whether to submit a patch for review and validation'
+        - string:
+            name: scripts_branch
+            default: 'master'
+            description: 'Branch to pull jenkins-script from'
+    disabled: false
+    node: tcwg-coordinator
+    concurrent: false
+    display-name: 'TCWG ZZZ Monitor Upstream Patches'
+    scm:
+        - git:
+            url: https://git.linaro.org/toolchain/jenkins-scripts.git
+            refspec: +refs/heads/*:refs/remotes/origin/* +refs/changes/*:refs/changes/*
+            name: origin
+            branches:
+                - ${scripts_branch}
+            basedir: jenkins-scripts
+            skip-tag: true
+            shallow-clone: true
+            wipe-workspace: false
+            clean:
+                before: true
+    wrappers:
+        - timeout:
+            timeout: 600
+        - timestamps
+        - ssh-agent-credentials:
+            # tcwg-buildslave user id
+            users:
+                - 'e0958a95-204f-4c14-a66c-5e2be6c5d50a'
+        - build-name:
+            name: '#${BUILD_NUMBER}'
+    builders:
+        - shell: |
+            #!/bin/bash
+            ./jenkins-scripts/docker-run.sh -- ./jenkins-scripts/tcwg-upstream2gerrit.sh --branch "$branch" --patches "$patches" --project "$project" --squash "$squash" --filter "$filter"

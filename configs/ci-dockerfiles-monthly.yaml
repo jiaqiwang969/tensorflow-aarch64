@@ -1,0 +1,39 @@
+- job:
+    name: ci-dockerfiles-monthly
+    project-type: freestyle
+    defaults: global
+    properties:
+        - authorization:
+            anonymous:
+                - job-discover
+            linaro:
+                - job-read
+                - job-extended-read
+                - job-build
+        - build-discarder:
+            days-to-keep: 90
+            num-to-keep: 200
+    disabled: false
+    display-name: 'CI docker image monthly rebuild'
+    triggers:
+        - timed: '@monthly'
+    scm:
+        - git:
+            url: https://git.linaro.org/ci/dockerfiles.git
+            basedir: dockerfiles
+            skip-tag: true
+            clean:
+                before: true
+    wrappers:
+        - timestamps
+    builders:
+        - shell:
+            !include-raw: ci-dockerfiles-deployment/update-images.sh
+        - trigger-builds:
+            - project: ci-dockerfile-build
+              parameter-factories:
+                - factory: filebuild
+                  file-pattern: docker_*_build.txt
+    publishers:
+        - email:
+            recipients: systems@linaro.org

@@ -1,0 +1,210 @@
+- job:
+    name: tcwg-llvm-release
+    project-type: matrix
+    defaults: global
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+                - job-extended-read
+            linaro:
+                - job-build
+                - job-cancel
+        - build-discarder:
+            days-to-keep: 30
+            num-to-keep: 10
+    parameters:
+        - string:
+            name: release
+            default: ''
+            description: 'Release number. Ex. 4.0.1'
+        - string:
+            name: candidate
+            default: 'git-ref=master'
+            description: 'RC number. Ex. 1, 2, final'
+        - string:
+            name: toolchain
+            default: ''
+            description: 'URL of the toolchain to use. This needs to be a tarball with a /bin directory inside with either GCC or LLVM from make install'
+        - string:
+            name: build_container_tag
+            default: 'lts_1'
+            description: 'Type of image to use in the container: xenial, bionic, focal.'
+        - string:
+            name: compiler
+            default: 'clang'
+            description: 'Override the default system compiler. Only used if "toolchain" is empty.'
+        - string:
+            name: target_list
+            default: 'tcwg-x86_64-cam tcwg-tk1_32-build tcwg-amp'
+            description: 'List of targets should be a subset of slave axis'
+        - string:
+            name: scripts_branch
+            default: 'refs/remotes/origin/tested'
+            description: 'Branch to pull jenkins-script from'
+        - bool:
+            name: useninja
+            default: true
+            description: 'Whether or not to use ninja for the release (works for releases > 9.0.0)'
+        - bool:
+            name: testsuite
+            default: true
+            description: 'Whether or not to trigger a test-suite with this build.'
+    disabled: false
+    node: tcwg-coordinator
+    child-workspace: $label
+    concurrent: true
+    display-name: 'TCWG LLVM Release'
+    scm:
+        - git:
+            url: http://git.linaro.org/toolchain/jenkins-scripts.git
+            refspec: +refs/heads/*:refs/remotes/origin/* +refs/changes/*:refs/changes/*
+            name: origin
+            branches:
+                - ${scripts_branch}
+            skip-tag: true
+            shallow-clone: true
+            wipe-workspace: true
+    triggers:
+        - timed: '@weekly'
+    axes:
+        - axis:
+            type: slave
+            name: label
+            values:
+                - tcwg-x86_64-cam
+                - tcwg-tk1_32-build
+                - tcwg-llvm_tk1-01
+                - tcwg-llvm_tk1-02
+                - tcwg-apm_64-build
+                - tcwg-d05_64-build
+                - tcwg-amp
+        - axis:
+            type: dynamic
+            name: target
+            values:
+                - target_list
+    execution-strategy:
+        combination-filter: |
+            label==target
+        sequential: false
+    wrappers:
+        - timeout:
+            timeout: 1800
+        - timestamps
+        - ssh-agent-credentials:
+            # tcwg-buildslave user id
+            users:
+                - 'e0958a95-204f-4c14-a66c-5e2be6c5d50a'
+        - build-name:
+            name: '#${BUILD_NUMBER}'
+    builders:
+        - shell: |
+            #!/bin/bash
+
+            set -ex
+
+            . jenkins-helpers.sh
+
+            # Until we figure out a way to use heavy-job with different weights
+            # based on the builder, we hardcode to one.
+            weight=1
+            buildjobs=1
+
+            # Select builder arch/type/container
+            case ${label} in
+                tcwg-x86_64-build|tcwg-x86_64-cam)
+                    builder_arch=amd64
+                    buildjobs=8 # 1 slot is 32/4
+                    ;;
+                tcwg-tk1_32-build|tcwg-llvm_tk1-*)
+                    builder_arch=armhf
+                    buildjobs=3 # TK1s only have 4 cores and little RAM
+                    ;;
+                tcwg-apm_64-build)
+                    builder_arch=arm64
+                    buildjobs=8 # APMs only have 8 cores
+                    ;;
+                tcwg-d05_64-build)
+                    builder_arch=arm64
+                    buildjobs=64 # D05 has lots of cores
+                    ;;
+                tcwg-amp)
+                    builder_arch=arm64
+                    buildjobs=32 # Amperes have 32 cores
+                    ;;
+                *) echo "ERROR: Unsupported label: $label"; exit 1 ;;
+            esac
+
+            # Sets the system compiler
+            compiler_option=''
+            if [ "${toolchain:+set}" != "set" ] && [ "${compiler:+set}" = "set" ]; then
+              compiler_option="--compiler=${compiler}"
+            fi
+
+            # Trigger toolchain name
+            toolchain_file="${WORKSPACE}/llvm.params.toolchain"
+            toolchain_file_option=""
+            if ${twostage} || ${testsuite}; then
+              toolchain_file_option="--toolchain-file=$toolchain_file"
+            fi
+
+            # Start build container
+            builder=$(print_host_for_node $NODE_NAME)
+            bash ${WORKSPACE}/start-container-docker.sh --arch ${builder_arch} --distro ${build_container_tag} --session-host ${builder} --weight ${weight} > build-container.sh
+
+            # Define CONTAINER, CONTAINER_CLEANUP, session_host and session_port
+            . ./build-container.sh
+            BUILD_CONTAINER="${CONTAINER}"
+            BUILD_CONTAINER_CLEANUP="${CONTAINER_CLEANUP}"
+
+            # Make sure to cleanup build container if something goes
+            # wrong when preparing the test environment
+            if [ "${BUILD_CONTAINER_CLEANUP}" != "" ]; then
+                CONTAINERS_CLEANUP="${BUILD_CONTAINER_CLEANUP}"
+                trap "${CONTAINERS_CLEANUP}" EXIT
+            fi
+
+            # Setup job parameters and run (for now, just pretend to run)
+            ret=0
+            ${BUILD_CONTAINER} "cd ${WORKSPACE} && bash -x ${WORKSPACE}/tcwg-llvm-release.sh \
+                --workspace=${WORKSPACE} \
+                --release=${release} \
+                --candidate=${candidate} \
+                --buildjobs=${buildjobs} \
+                --toolchain=${toolchain} \
+                --use-ninja=${useninja} \
+                $toolchain_file_option $compiler_option" || ret=$?
+
+            if [ $ret -ne 0 ]; then
+                touch llvm.failed
+            fi
+
+            # Chained jobs
+            if ${testsuite}; then
+              echo "target_list=${label}" > llvm.params.testsuite
+              cat $toolchain_file >> llvm.params.testsuite
+            fi
+
+            # failure is handled by conditional step on llvm.failed
+            # so that the testsuite job is always triggered
+            exit 0
+
+        - conditional-step:
+            condition-kind: file-exists
+            condition-filename: llvm.params.testsuite
+            steps:
+                - trigger-builds:
+                    - project: 'tcwg-llvm-testsuite'
+                      property-file: llvm.params.testsuite
+                      current-parameters: true
+                      block: true
+        - conditional-step:
+            condition-kind: file-exists
+            condition-filename: llvm.failed
+            steps:
+                - shell: "exit 1"
+    publishers:
+      - archive:
+          artifacts: 'artifacts/**'
+          latest-only: false

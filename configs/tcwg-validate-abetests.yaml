@@ -1,0 +1,125 @@
+- job:
+    name: tcwg-validate-abetests
+    project-type: matrix
+    defaults: global
+    properties:
+        - authorization:
+            anonymous:
+                - job-read
+                - job-extended-read
+            linaro:
+                - job-build
+                - job-cancel
+        - build-discarder:
+            days-to-keep: 30
+            num-to-keep: 100
+    parameters:
+        - string:
+            name: scripts_branch
+            default: master
+            description: 'Jenkins-scripts branch to use'
+    disabled: false
+    node: tcwg-coordinator
+    retry-count: 3
+    concurrent: true
+    display-name: 'TCWG BBB test for abe-tests.git'
+    scm:
+        - git:
+            url: https://git.linaro.org/toolchain/abe-tests.git
+            refspec: ${GERRIT_REFSPEC}
+            branches:
+                - ${GERRIT_BRANCH}
+            skip-tag: true
+            shallow-clone: true
+            wipe-workspace: true
+            choosing-strategy: gerrit
+    triggers:
+        - gerrit:
+            server-name: 'review.linaro.org'
+            override-votes: true
+            gerrit-build-successful-verified-value: 1
+            gerrit-build-failed-verified-value: -1
+            gerrit-build-successful-codereview-value: 1
+            gerrit-build-failed-codereview-value: -1
+            readable-message: true
+            successful-message: 'Works for me'
+            failure-message: 'Well ... it worked on my machine'
+            failure-message-file: 'jenkins-results.txt'
+            trigger-for-unreviewed-patches: true
+            projects:
+                - project-compare-type: 'ANT'
+                  project-pattern: 'toolchain/abe-tests'
+                  branches:
+                    - branch-compare-type: 'ANT'
+                      branch-pattern: 'master'
+    axes:
+        - axis:
+            type: slave
+            name: label
+            values:
+                - tcwg-x86_64-build
+        - axis:
+            type: user-defined
+            name: test
+            values:
+                - abe-tests
+                - abe-tests-checkout
+    execution-strategy:
+        sequential: false
+    wrappers:
+        - timeout:
+            timeout: 300
+        - timestamps
+        - ssh-agent-credentials:
+            # tcwg-buildslave user id
+            users:
+                - 'e0958a95-204f-4c14-a66c-5e2be6c5d50a'
+        - build-name:
+            name: '#${BUILD_NUMBER}-${GIT_REVISION,length=8}'
+    builders:
+        - shell: |
+            #!/bin/bash
+
+            set -e
+
+            git clone -b $scripts_branch --depth 1 https://git.linaro.org/toolchain/jenkins-scripts
+
+            ./jenkins-scripts/start-container-docker.sh --label $label --node $NODE_NAME --task build --prefix build_ > build-container.sh
+            . ./build-container.sh
+            BUILD_SHELL="build_container_exec bash"
+            $BUILD_SHELL -c "echo \"Build session is up; ulimit config:\"; ulimit -a"
+
+            # Remove container on exit
+            trap "build_container_cleanup" EXIT HUP INT QUIT TRAP KILL PIPE TERM
+
+            ARTIFACTS=${WORKSPACE}/artifacts
+            mkdir -p "${ARTIFACTS}"
+            status=0
+
+            case "$test" in
+              abe-tests)
+                ${BUILD_SHELL} -c "set -ex; ${WORKSPACE}/test-manifest2.sh --ref-snapshots /home/tcwg-buildslave/snapshots-ref --display-summary --quiet" || status=$?
+                cp full-manifest-test/*.txt "${ARTIFACTS}"
+                # full build logs are large, and not very useful, so we
+                # don't waste the disk space on them
+                rm -f ${ARTIFACTS}/test-mani-build[12].txt
+                ;;
+              abe-tests-checkout)
+                ${BUILD_SHELL} -c "set -ex; ${WORKSPACE}/test-checkout.sh --clean-snapshots --ref-snapshots /home/tcwg-buildslave/snapshots-ref" || status=$?
+                cp checkout-test/workspace*/test_*.log "${ARTIFACTS}"
+                # the reports from here aren't usually needed, so are
+                # worth compressing
+                xz ${ARTIFACTS}/*
+                ;;
+            esac
+            echo "$test result: $status" >> "${WORKSPACE}"/jenkins-results.txt
+            exit $status
+    publishers:
+        - workspace-cleanup:
+            include:
+              - "nothing"
+            dirmatch: true
+        - archive:
+            artifacts: 'artifacts/*'
+            latest-only: false
+
