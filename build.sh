@@ -1,10 +1,15 @@
 #!/bin/bash
 
 set -xe
-sudo apt-add-repository ppa:ansible/ansible
-sudo apt update -y
+echo "deb http://deb.debian.org/debian/ buster-backports main" | sudo tee /etc/apt/sources.list.d/backports.list
+sudo apt update
+sudo apt upgrade -y
+sudo apt install -y ansible/buster-backports
+
+#sudo apt-add-repository ppa:ansible/ansible
+#sudo apt update -y
 #apt upgrade -y
-sudo apt install -y ansible
+#sudo apt install -y ansible
 python3 -V
 pip -V
 #pip install --upgrade pip
